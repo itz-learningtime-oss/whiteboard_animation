@@ -24,6 +24,7 @@ class PenSegment:
     end: np.ndarray
     budget: float
     draws: bool
+    color: tuple[int, int, int] = (0, 0, 0)
 
 
 @dataclass(frozen=True)
@@ -73,19 +74,20 @@ class SketchAnimator:
         self.segments: list[PenSegment] = []
         previous = None
         for path in drawing.paths:
+            path_color = path.color or self.fallback_color
             if previous is not None:
                 distance = float(np.linalg.norm(path.points[0] - previous))
                 if distance > 1e-8:
-                    self.segments.append(PenSegment(previous, path.points[0], max(.1, distance * .08), False))
+                    self.segments.append(PenSegment(previous, path.points[0], max(.1, distance * .08), False, path_color))
             for a, b in zip(path.points[:-1], path.points[1:]):
                 length = float(np.linalg.norm(b - a))
                 if length > 1e-8:
-                    self.segments.append(PenSegment(a, b, length, True))
+                    self.segments.append(PenSegment(a, b, length, True, path_color))
             previous = path.points[-1]
         self.total_budget = sum(segment.budget for segment in self.segments)
         if self.total_budget <= 0:
             raise ValueError("The drawing has no non-zero-length contours.")
-        self.color = ImageColor.getrgb(self.options.ink)
+        self.fallback_color = ImageColor.getrgb(self.options.ink)
         self.pen_width = max(1, round(self.options.pen_width * drawing.width / 1920))
         self.marker = None
         if self.options.hand:
@@ -115,7 +117,7 @@ class SketchAnimator:
             start = segment.start + (segment.end - segment.start) * (self.partial / segment.budget)
             end = segment.start + (segment.end - segment.start) * ((self.partial + take) / segment.budget)
             if segment.draws:
-                cv2.line(self.board, tuple(int(n) for n in np.round(start * 16)), tuple(int(n) for n in np.round(end * 16)), self.color, self.pen_width, cv2.LINE_AA, shift=4)
+                cv2.line(self.board, tuple(int(n) for n in np.round(start * 16)), tuple(int(n) for n in np.round(end * 16)), segment.color, self.pen_width, cv2.LINE_AA, shift=4)
             self.tip = (float(end[0]), float(end[1]))
             self.pen_down = segment.draws
             self.partial += take

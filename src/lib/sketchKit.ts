@@ -62,7 +62,7 @@ export async function downloadSketchKit(
 
   /* --- Render command --- */
   const [low, high] = thresholds[settings.detail];
-  const command = `python main.py --image ${imageArg} --audio ${audioName} --output final_video.mp4 --width ${settings.resolution === '1080' ? 1920 : 1280} --height ${settings.resolution === '1080' ? 1080 : 720} --fps ${settings.fps} --sort ${settings.order} --canny-low ${low} --canny-high ${high} --paper "${settings.paper}" --ink "${settings.ink}" --pen-width ${settings.penWidth}${settings.hand ? '' : ' --no-hand'} --save-sketch${subtitleArg}`;
+  const command = `python main.py --image ${imageArg} --audio ${audioName} --output final_video.mp4 --width ${settings.resolution === '1080' ? 1920 : 1280} --height ${settings.resolution === '1080' ? 1080 : 720} --fps ${settings.fps} --sort ${settings.order} --canny-low ${low} --canny-high ${high} --color-mode ${settings.colorMode} --paper "${settings.paper}" --ink "${settings.ink}" --pen-width ${settings.penWidth}${settings.hand ? '' : ' --no-hand'} --save-sketch${subtitleArg}`;
 
   const summary = images.length === 1
     ? `Your image and audio are included.${subtitleFile ? ' A subtitle file is also included.' : ''} Nothing was uploaded.`

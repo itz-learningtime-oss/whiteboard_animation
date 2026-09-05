@@ -190,7 +190,7 @@ class VectorManager:
             for prefix in prefixes:
                 # Stroke width is normalized locally; it is not an Iconify query option.
                 variant = f"{keyword}-light" if prefix == "ph" and not keyword.endswith("-light") else keyword
-                candidates.append((f"https://api.iconify.design/{prefix}/{variant}.svg?color=%23343c32", "ISC (Lucide)" if prefix == "lucide" else "MIT"))
+                candidates.append((f"https://api.iconify.design/{prefix}/{variant}.svg", "ISC (Lucide)" if prefix == "lucide" else "MIT"))
             for url, license_name in candidates:
                 try:
                     data = self._fetch(url)
@@ -368,14 +368,14 @@ def parse_svg(path: Path, accent: str = "#648650", hatching: bool = True) -> Vec
                     closed_contours.append(coords)
                 explicit = style.get("data-layer", "")
                 layer = explicit if explicit in {"outline", "detail", "hatch"} else "outline" if closed or len(subpath) > 3 else "detail"
-                color = style.get("stroke", INK) if layer == "hatch" else INK
+                color = style.get("stroke", INK)
                 if color in {"none", "currentColor", "accent", "#648650"} or style.get("data-accent") == "true":
                     color = accent if layer == "hatch" else INK
                 if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
                     color = accent if layer == "hatch" else INK
                 if layer != "hatch" or hatching:
                     strokes.append(Stroke(coords, layer, color, 2.4 if layer == "outline" else 1.35))
-            fill = style.get("fill", "black").lower()
+            fill = style.get("fill", "none").lower()
             wants_fill = style.get("data-hatch", "").lower() in {"true", "1"} or fill not in {"none", "transparent", "white", "#fff", "#ffffff"}
             if hatching and closed_contours and wants_fill and style.get("data-hatch") != "false":
                 for points in hatch_region(closed_contours, spacing=unit * 7, fill_rule=style.get("fill-rule", "nonzero")):

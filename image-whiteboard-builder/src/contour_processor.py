@@ -26,6 +26,7 @@ class ContourOptions:
     margin: float = .075
     processing_limit: int = 1600
     max_contours: int = 12000
+    color_mode: str = "colorful"
 
     def validate(self) -> None:
         if not (320 <= self.width <= 3840 and 180 <= self.height <= 2160) or self.width % 2 or self.height % 2:
@@ -36,6 +37,8 @@ class ContourOptions:
             raise ValueError("Gaussian blur kernel must be 3, 5, 7, or 9.")
         if self.sort not in {"spatial", "length"}:
             raise ValueError("Contour sorting must be spatial or length.")
+        if self.color_mode not in {"colorful", "monochrome"}:
+            raise ValueError("Color mode must be 'colorful' or 'monochrome'.")
         if not math.isfinite(self.min_length) or not 0 <= self.min_length <= 500:
             raise ValueError("Minimum contour length must be between 0 and 500 pixels.")
         if not 0 <= self.margin <= .3 or not 256 <= self.processing_limit <= 2560 or not 1 <= self.max_contours <= 20000:
@@ -46,6 +49,7 @@ class ContourOptions:
 class ContourPath:
     points: np.ndarray
     length: float
+    color: tuple[int, int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -138,7 +142,12 @@ def process_image(source: Path, options: ContourOptions | None = None) -> Contou
         if length <= 1e-8:
             continue
         fitted.setflags(write=False)
-        paths.append(ContourPath(fitted, length))
+        path_color: tuple[int, int, int] | None = None
+        if options.color_mode == "colorful":
+            sample_pts = np.clip(points.astype(np.int32), 0, np.array([rgb.shape[1] - 1, rgb.shape[0] - 1]))
+            mean_rgb = rgb[sample_pts[:, 1], sample_pts[:, 0]].mean(axis=0)
+            path_color = tuple(int(round(v)) for v in mean_rgb)
+        paths.append(ContourPath(fitted, length, path_color))
         cv2.polylines(sketch, [np.round(fitted * 16).astype(np.int32)], False, 0, max(1, round(options.width / 1280)), cv2.LINE_AA, shift=4)
     if not paths:
         raise ValueError("All detected contours are zero-length.")

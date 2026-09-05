@@ -6,8 +6,8 @@ export type SketchPath = { points: Point[]; length: number; x: number; y: number
 export type ImageInput = { file: File; url: string; pixels: ImageData; originalWidth: number; originalHeight: number };
 export type AudioInput = { file: File; url: string; buffer: AudioBuffer; duration: number; peaks: number[] };
 export type SketchDrawing = { paths: SketchPath[]; totalLength: number; edgeCount: number };
-export type SketchSettings = { detail: 'clean' | 'balanced' | 'detailed'; order: 'spatial' | 'length'; paper: string; ink: string; hand: boolean; penWidth: number; fps: 24 | 30 | 60; resolution: '1080' | '720' };
-export const defaultSketchSettings: SketchSettings = { detail: 'balanced', order: 'spatial', paper: '#fcfbf5', ink: '#30362d', hand: true, penWidth: 2.4, fps: 30, resolution: '1080' };
+export type SketchSettings = { detail: 'clean' | 'balanced' | 'detailed'; order: 'spatial' | 'length'; paper: string; ink: string; hand: boolean; penWidth: number; fps: 24 | 30 | 60; resolution: '1080' | '720'; colorMode: 'colorful' | 'monochrome' };
+export const defaultSketchSettings: SketchSettings = { detail: 'balanced', order: 'spatial', paper: '#fcfbf5', ink: '#30362d', hand: true, penWidth: 2.4, fps: 30, resolution: '1080', colorMode: 'colorful' };
 export const thresholds = { clean: [75, 190], balanced: [50, 140], detailed: [22, 70] } as const;
 const W = 900, H = 506.25;
 

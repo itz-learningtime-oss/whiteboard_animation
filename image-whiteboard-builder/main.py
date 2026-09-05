@@ -44,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-length", type=float, default=12)
     parser.add_argument("--margin", type=float, default=.075)
     parser.add_argument("--processing-limit", type=int, default=1600)
+    parser.add_argument("--color-mode", choices=["colorful", "monochrome"], default="colorful", help="Whether strokes sample native colors from the image (colorful) or all use --ink (monochrome)")
     parser.add_argument("--paper", default="#fcfbf5")
     parser.add_argument("--ink", default="#30362d")
     parser.add_argument("--pen-width", type=float, default=2.4, help="Line width in 1920px reference-canvas pixels")
@@ -109,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         images = _collect_images(args)
         durations = _parse_durations(args.durations, len(images))
 
-        contours = ContourOptions(width=args.width, height=args.height, low_threshold=args.canny_low, high_threshold=args.canny_high, blur_size=args.blur, min_length=args.min_length, sort=args.sort, margin=args.margin, processing_limit=args.processing_limit)
+        contours = ContourOptions(width=args.width, height=args.height, low_threshold=args.canny_low, high_threshold=args.canny_high, blur_size=args.blur, min_length=args.min_length, sort=args.sort, margin=args.margin, processing_limit=args.processing_limit, color_mode=args.color_mode)
         animation = AnimationOptions(paper=args.paper, ink=args.ink, pen_width=args.pen_width, hand=not args.no_hand, hand_path=args.hand, hand_scale=args.hand_scale, tip_x=args.tip_x, tip_y=args.tip_y)
         subtitle_options = SubtitleOptions(font_path=args.subtitle_font, font_size=args.subtitle_size, color=args.subtitle_color, background=args.subtitle_bg, background_opacity=args.subtitle_bg_opacity, margin=args.subtitle_margin)
 
