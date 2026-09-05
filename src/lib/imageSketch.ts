@@ -3,11 +3,12 @@ import handUrl from '../../image-whiteboard-builder/assets/hand_marker.png';
 
 export type Point = { x: number; y: number };
 export type SketchPath = { points: Point[]; length: number; x: number; y: number };
+export type SketchFill = { points: Point[]; width: number; startTime: number; endTime: number };
 export type ImageInput = { file: File; url: string; pixels: ImageData; originalWidth: number; originalHeight: number };
 export type AudioInput = { file: File; url: string; buffer: AudioBuffer; duration: number; peaks: number[] };
-export type SketchDrawing = { paths: SketchPath[]; totalLength: number; edgeCount: number };
-export type SketchSettings = { detail: 'clean' | 'balanced' | 'detailed'; order: 'spatial' | 'length'; paper: string; ink: string; hand: boolean; penWidth: number; fps: 24 | 30 | 60; resolution: '1080' | '720'; colorMode: 'colorful' | 'monochrome' };
-export const defaultSketchSettings: SketchSettings = { detail: 'balanced', order: 'spatial', paper: '#fcfbf5', ink: '#30362d', hand: true, penWidth: 2.4, fps: 30, resolution: '1080', colorMode: 'colorful' };
+export type SketchDrawing = { paths: SketchPath[]; fillStrokes: SketchFill[]; totalLength: number; edgeCount: number; sourceImageData?: ImageData };
+export type SketchSettings = { detail: 'clean' | 'balanced' | 'detailed'; order: 'spatial' | 'length'; paper: string; ink: string; hand: boolean; penWidth: number; fps: 24 | 30 | 60; resolution: '1080' | '720'; colorMode: 'colorful' | 'monochrome'; colorPreservation: number };
+export const defaultSketchSettings: SketchSettings = { detail: 'balanced', order: 'spatial', paper: '#fcfbf5', ink: '#30362d', hand: true, penWidth: 2.4, fps: 30, resolution: '1080', colorMode: 'colorful', colorPreservation: 0 };
 export const thresholds = { clean: [75, 190], balanced: [50, 140], detailed: [22, 70] } as const;
 const W = 900, H = 506.25;
 
@@ -170,9 +171,29 @@ export async function extractContours(input: ImageData, settings: SketchSettings
     if(paths.length>12000 || pointCount>250000) throw new Error('There are too many fine edges. Try the Clean detail setting or use a simpler image.');
   }
   if(!paths.length) throw new Error('No clear lines found. Try Detailed edges or a higher-contrast picture.');
-  paths.sort((a,b)=>settings.order==='length' ? b.length-a.length || a.y-b.y : Math.floor(a.y/22)-Math.floor(b.y/22) || a.x-b.x || a.y-b.y);
-  onProgress(1);
-  return { paths,totalLength:paths.reduce((sum,p)=>sum+p.length,0),edgeCount:tail };
+   paths.sort((a,b)=>settings.order==='length' ? b.length-a.length || a.y-b.y : Math.floor(a.y/22)-Math.floor(b.y/22) || a.x-b.x || a.y-b.y);
+   const fillStrokes: SketchFill[] = [];
+   if (settings.colorPreservation > 0) {
+      const brushWidth = Math.max(30, Math.round(W / 22));
+      const step = brushWidth * 0.75;
+      let rowIndex = 0;
+     const totalBandCount = Math.ceil(H / step) + 1;
+     for (let y = step / 2; y < H + step; y += step) {
+       const points: Point[] = [];
+       const segments = 24;
+       for (let i = 0; i <= segments; i++) {
+         const x = (i / segments) * W;
+         const wobble = Math.sin(i * 1.2 + rowIndex) * (brushWidth * 0.15);
+         points.push({ x, y: y + wobble });
+       }
+       const startFrac = 0.3 + (rowIndex / totalBandCount) * 0.7;
+       const endFrac = startFrac + 0.08 + (1 / totalBandCount) * 0.2;
+       fillStrokes.push({ points, width: brushWidth, startTime: startFrac, endTime: Math.min(1, endFrac) });
+       rowIndex++;
+     }
+   }
+   onProgress(1);
+   return { paths, fillStrokes, totalLength: paths.reduce((sum,p)=>sum+p.length,0), edgeCount: tail, sourceImageData: input };
 }
 
 let markerPromise: Promise<HTMLCanvasElement> | undefined;
@@ -206,11 +227,18 @@ export class SketchPainter {
   private ctx: CanvasRenderingContext2D;
   private scratch: HTMLCanvasElement;
   private scratchContext: CanvasRenderingContext2D;
+  private drawingRef: SketchDrawing;
+  private imageCanvas?: HTMLCanvasElement;
   tip: Point | null=null;
   constructor(private canvas: HTMLCanvasElement, drawing: SketchDrawing, private settings: SketchSettings, private marker?: HTMLCanvasElement) {
     this.ctx=canvas.getContext('2d')!;
     this.scratch=document.createElement('canvas');this.scratch.width=canvas.width;this.scratch.height=canvas.height;
     this.scratchContext=this.scratch.getContext('2d')!;
+    this.drawingRef=drawing;
+    if (drawing.sourceImageData) {
+      this.imageCanvas=document.createElement('canvas');this.imageCanvas.width=drawing.sourceImageData.width;this.imageCanvas.height=drawing.sourceImageData.height;
+      this.imageCanvas.getContext('2d')!.putImageData(drawing.sourceImageData,0,0);
+    }
     let previous:Point|undefined;
     for(const path of drawing.paths){
       if(previous){const budget=Math.hypot(path.points[0].x-previous.x,path.points[0].y-previous.y)*.08;if(budget>1e-8)this.segments.push({a:previous,b:path.points[0],budget,draws:false});}
@@ -225,10 +253,33 @@ export class SketchPainter {
     c.strokeStyle=this.settings.ink;c.lineWidth=this.settings.penWidth*W/1920;c.lineCap='round';c.lineJoin='round';
   }
   paint(fraction:number){
-    fraction=Math.max(0,Math.min(1,fraction));const target=fraction*this.budget;
+    fraction=Math.max(0,Math.min(1,fraction));
+    const fillStart=.3;
+    const outlineProgress=fraction<fillStart?fraction/fillStart:1;
+    const target=outlineProgress*this.budget;
     if(target<this.consumed-1e-8)this.reset();
     const c=this.scratchContext;
-    while(this.index<this.segments.length && this.consumed<target-1e-8){
+    if(this.settings.colorPreservation>0&&this.imageCanvas&&fraction>fillStart){
+      const fillProgress=(fraction-fillStart)/(1-fillStart);
+      c.save();
+      c.beginPath();
+      for(const fstroke of this.drawingRef.fillStrokes){
+        if(fstroke.startTime>fillProgress)continue;
+        const p=Math.max(0,Math.min(1,(fillProgress-fstroke.startTime)/(fstroke.endTime-fstroke.startTime)));
+        const count=Math.max(2,Math.floor(fstroke.points.length*p));
+        const pts=fstroke.points.slice(0,count);
+        if(pts.length>1){
+          c.moveTo(pts[0].x+fstroke.width/2,pts[0].y);
+          for(let i=0;i<pts.length;i++)c.arc(pts[i].x,pts[i].y,fstroke.width/1.8,0,Math.PI*2);
+        }
+      }
+      c.clip();
+      c.globalAlpha=this.settings.colorPreservation/100;
+      c.drawImage(this.imageCanvas,0,0,W,H);
+      c.globalAlpha=1;
+      c.restore();
+    }
+    while(this.index<this.segments.length&&this.consumed<target-1e-8){
       const s=this.segments[this.index],take=Math.min(target-this.consumed,s.budget-this.partial),start=this.partial/s.budget,end=(this.partial+take)/s.budget;
       const a={x:s.a.x+(s.b.x-s.a.x)*start,y:s.a.y+(s.b.y-s.a.y)*start},b={x:s.a.x+(s.b.x-s.a.x)*end,y:s.a.y+(s.b.y-s.a.y)*end};
       if(s.draws){c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();}
