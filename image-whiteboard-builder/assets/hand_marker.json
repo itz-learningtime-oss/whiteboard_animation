@@ -1,0 +1,6 @@
+{
+  "image": "hand_marker.png",
+  "reference_size": [1024, 1024],
+  "tip_normalized": [0.279, 0.278],
+  "description": "The visible tip is approximately (286, 285) in the original asset. Override --tip-x and --tip-y when replacing this image."
+}

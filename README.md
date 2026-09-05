@@ -1,5 +1,29 @@
 # Scribble Studio
 
+## Image and Audio Workflow
+
+The studio now opens an image-to-video workspace. Upload your own picture and
+audio, extract actual contours, preview the marker tracing with the audio, and
+export an audio-backed browser video or a complete offline Python render kit.
+The existing script workflow and saved projects remain available in the sidebar.
+
+The standalone refactored Python project is in `image-whiteboard-builder/`:
+
+```bash
+cd image-whiteboard-builder
+python setup_builder.py
+python main.py --image input_diagram.png --audio narration.mp3 --output final_video.mp4
+```
+
+It uses sample-exact pydub analysis, OpenCV Canny contours, logical stroke sorting,
+an aligned marker hand, and streamed FFmpeg H.264/AAC output. See
+`image-whiteboard-builder/README.md` for setup, safety limits, timing guarantees,
+and test instructions. Python dependency installation and execution are unavailable
+in the current tool environment; the supplied installer and end-to-end tests have
+not been run here. The browser production build is checked independently.
+
+## Script Studio
+
 A local-first whiteboard video studio built with React, TypeScript, Vite, and
 Tailwind CSS, with a complete modular Python renderer in `whiteboard-engine/`.
 

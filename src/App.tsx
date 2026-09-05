@@ -5,18 +5,20 @@ import {
   ArrowDown, ArrowDownToLine, ArrowRight, ArrowUp, ArrowUpRight, BookOpen, Check,
   CheckCheck, ChevronDown, ChevronRight, CircleHelp, Clapperboard, Clock3, CloudCheck,
   Code2, Copy, Download, Expand, FileJson, FilePenLine, FileText, Folder, FolderOpen,
-  Globe2, GripVertical, Keyboard, Layers3, Leaf, LoaderCircle, LockKeyhole,
+  Globe2, GripVertical, ImagePlus, Keyboard, Layers3, Leaf, LoaderCircle, LockKeyhole,
   Menu, Mic, Monitor, MoreHorizontal, Paintbrush, Palette, Pause, PenLine, Play, Plus,
   RotateCcw, Search, ShieldCheck, SkipBack, Sparkles, Sprout, Terminal, Trash2,
   Upload, Volume2, VolumeX, WandSparkles, X,
 } from 'lucide-react';
 import BoardPreview from './components/BoardPreview';
 import Modal from './components/Modal';
+import ImageStudio from './components/ImageStudio';
+import './image-studio.css';
 import { defaultSettings, formatTime, initialScript, newProject, parseScript, safeSettings, scriptJson, templates, uid, visualNames } from './lib/project';
 import type { Project, Scene, StudioSettings, Visual } from './lib/project';
 import { browserVideoFormat, checkEngine, downloadEngine, downloadProject, recordBrowserVideo, renderLocalVideo } from './lib/export';
 
-type Page = 'studio' | 'projects' | 'library' | 'templates';
+type Page = 'sketch' | 'studio' | 'projects' | 'library' | 'templates';
 type Step = 'script' | 'storyboard' | 'style';
 type Dialog = 'new' | 'rename' | 'export' | 'guide' | 'settings' | 'fullscreen' | 'delete' | null;
 const STORAGE_KEY = 'scribble.projects.v1';
@@ -51,7 +53,8 @@ export default function App() {
   const [project, setProject] = useState<Project>(initial[0]);
   const previousProjectRef = useRef(project);
   const activeProjectRef = useRef(project); activeProjectRef.current = project;
-  const [page, setPage] = useState<Page>('studio');
+  const [page, setPage] = useState<Page>('sketch');
+  const [sketchHelpRequest, setSketchHelpRequest] = useState(0);
   const [step, setStep] = useState<Step>('script');
   const [mode, setMode] = useState<'text' | 'json'>('text');
   const [jsonText, setJsonText] = useState('');
@@ -177,7 +180,7 @@ export default function App() {
       const target = event.target as HTMLElement;
       if (dialog || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable) return;
       if (event.code === 'Space' && page === 'studio' && !['BUTTON', 'A'].includes(target.tagName)) { event.preventDefault(); play(); }
-      if (event.key === '?') setDialog('guide');
+      if (event.key === '?') { if(page==='sketch')setSketchHelpRequest(n=>n+1);else setDialog('guide'); }
     };
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
   }, [play, dialog, page]);
@@ -263,21 +266,26 @@ export default function App() {
   const copyCommand = async (text: string) => { try { await navigator.clipboard.writeText(text); notify('Command copied.'); } catch { notify('Clipboard access is blocked. Select and copy the command manually.'); } };
   const closeDialog = () => { if (exportBusy) exportAbort.current?.abort(); setDialog(null); };
   const emptyBoard = <div className="empty-board"><PenLine size={45} strokeWidth={1.25}/><h3>A blank page. Endless possibilities.</h3><p>Add your script and let your story take shape.</p><button className="text-button" onClick={()=>useTemplate(0)}>Start with an example <ArrowRight size={15}/></button></div>;
-  const nav = [{ id: 'studio' as Page, icon: PenLine, label: 'Create a video' }, { id: 'projects' as Page, icon: FolderOpen, label: 'My projects' }, { id: 'library' as Page, icon: Layers3, label: 'Illustration library' }, { id: 'templates' as Page, icon: Clapperboard, label: 'Templates' }];
+  const nav = [{ id: 'sketch' as Page, icon: ImagePlus, label: 'Image to video' }, { id: 'studio' as Page, icon: PenLine, label: 'Script to video' }, { id: 'projects' as Page, icon: FolderOpen, label: 'My projects' }, { id: 'library' as Page, icon: Layers3, label: 'Illustration library' }, { id: 'templates' as Page, icon: Clapperboard, label: 'Templates' }];
 
   return <div className="app-shell">
     <input ref={uploadRef} type="file" accept=".json,.txt" className="sr-only" aria-label="Import a script" onChange={e=>void importFile(e.target.files?.[0])}/>
     {sidebarOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={()=>setSidebarOpen(false)}/>}
     <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
-      <button className="brand-button" aria-label="Scribble studio home" onClick={()=>navigate('studio')}><Brand/></button><p className="brand-tagline">a little more human.</p>
+      <button className="brand-button" aria-label="Scribble studio home" onClick={()=>navigate('sketch')}><Brand/></button><p className="brand-tagline">a little more human.</p>
       <button className="new-project-button" onClick={()=>{setNameInput('');setDialog('new');}}><Plus size={17}/><span>New project</span><span className="new-project-shortcut">+</span></button>
       <div className="nav-label">YOUR WORKSPACE</div><nav className="side-nav" aria-label="Main navigation">{nav.map(({id,icon:Icon,label})=><button key={id} className={`nav-item ${page===id?'active':''}`} onClick={()=>navigate(id)} aria-current={page===id?'page':undefined}><Icon size={19} strokeWidth={1.7}/><span>{label}</span>{id==='templates' && <span className="new-label">NEW</span>}</button>)}</nav>
       <div className="sidebar-bottom"><div className="local-note"><div className="local-note-drawing"><Sprout size={35} strokeWidth={1.2}/><svg viewBox="0 0 35 20" fill="none"><path d="M2 17Q15 2 30 5M23 1l8 3-5 7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg></div><h4>Big ideas. Small footprint.</h4><p>Free to create.<br/>Yours to keep. Always.</p><button onClick={()=>setDialog('guide')}>Open source, by nature <ArrowUpRight size={13}/></button></div><button className="help-link" onClick={()=>setDialog('guide')}><CircleHelp size={18}/><span>A little help</span><span className="shortcut-key">?</span></button><button className="workspace-profile" onClick={()=>setDialog('settings')}><div className="workspace-avatar">Y<span/></div><div><strong>Your workspace</strong><span>Personal & private</span></div><ChevronDown size={15}/></button></div>
     </aside>
     <div className="main-shell">
-      <header className="topbar"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={()=>setSidebarOpen(true)}><Menu size={21}/></button><div className="breadcrumb"><Folder size={17}/><button onClick={()=>navigate('projects')}>Workspace</button><ChevronRight size={13}/><button className="project-name" onClick={()=>{setNameInput(project.title);setDialog('rename');}}>{project.title}<PenLine size={12}/></button></div><div className="topbar-actions"><span className={`save-status ${!storageAvailable?'save-warning':''}`}><CloudCheck size={16}/>{!storageAvailable?'Not saved: storage unavailable':saved?'All changes saved':'Saving your story...'}</span><span className="topbar-divider"/><button className="guide-button" onClick={()=>setDialog('guide')}><BookOpen size={17}/><span>Quick guide</span></button><a className="icon-button github-button" href="https://github.com/yogendra-yatnalkar/storyboard-ai" target="_blank" rel="noreferrer" aria-label="View the original inspiration on GitHub" title="Project inspiration on GitHub"><Github size={19}/></a></div></header>
+      <header className="topbar">
+        <button className="icon-button mobile-menu" aria-label="Open navigation" onClick={()=>setSidebarOpen(true)}><Menu size={21}/></button>
+        <div className="breadcrumb"><Folder size={17}/><button onClick={()=>navigate('projects')}>Workspace</button><ChevronRight size={13}/>{page==='sketch'?<span className="project-name">Image to video</span>:<button className="project-name" onClick={()=>{setNameInput(project.title);setDialog('rename');}}>{project.title}<PenLine size={12}/></button>}</div>
+        <div className="topbar-actions"><span className={`save-status ${!storageAvailable&&page!=='sketch'?'save-warning':''}`}>{page==='sketch'?<><ShieldCheck size={16}/>Files stay in this session</>:<><CloudCheck size={16}/>{!storageAvailable?'Not saved: storage unavailable':saved?'All changes saved':'Saving your story...'}</>}</span><span className="topbar-divider"/><button className="guide-button" onClick={()=>{if(page==='sketch')setSketchHelpRequest(n=>n+1);else setDialog('guide');}}><BookOpen size={17}/><span>Quick guide</span></button><a className="icon-button github-button" href="https://github.com/yogendra-yatnalkar/storyboard-ai" target="_blank" rel="noreferrer" aria-label="View the original inspiration on GitHub" title="Project inspiration on GitHub"><Github size={19}/></a></div>
+      </header>
       <main className="main-content">
-        {page==='studio' ? <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{duration:reducedMotion?0:.45}}>
+        <div hidden={page!=='sketch'}><ImageStudio active={page==='sketch'} helpRequest={sketchHelpRequest} notify={notify} onScriptStudio={()=>navigate('studio')}/></div>
+        {page==='sketch' ? null : page==='studio' ? <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{duration:reducedMotion?0:.45}}>
           <div className="page-heading"><div><h1>A little script. A big story.<span className="heading-spark"><svg viewBox="0 0 35 38" fill="none"><path d="M8 27L5 18M16 19L18 6M24 24L33 16" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg></span></h1><p>Bring your ideas to life, one hand-drawn scene at a time.</p></div><button className="primary-button export-top" onClick={openExport}><ArrowDownToLine size={17}/><span>Export video</span></button></div>
           <div className="workflow-tabs" role="tablist" aria-label="Studio workflow">{([{id:'script',label:'Your script'},{id:'storyboard',label:'Storyboard'},{id:'style',label:'Make it yours'}] as const).map((item,i)=><div className="workflow-step" key={item.id}><button role="tab" aria-selected={step===item.id} aria-controls="studio-editor" className={step===item.id?'selected':''} onClick={()=>setStep(item.id)}><span className="step-number">0{i+1}</span>{item.label}</button>{i<2 && <span className="step-connector"/>}</div>)}<span className="workflow-aside"><ShieldCheck size={14}/>No API keys. No limits on ideas.</span></div>
           <div className="studio-grid">
