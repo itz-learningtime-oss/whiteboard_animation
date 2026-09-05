@@ -1,0 +1,17 @@
+name: Test Local Whiteboard Engine
+on: [push, pull_request]
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install system rendering and narration tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng libespeak1 libcairo2 libraqm0 fonts-dejavu-core
+      - name: Install Python dependencies and local model
+        run: python setup_engine.py --skip-fonts
+      - name: Run all tests, including narrated MP4 rendering
+        run: python -m unittest discover -s tests -v

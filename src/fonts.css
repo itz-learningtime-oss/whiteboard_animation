@@ -1,0 +1,10 @@
+/* Modern browser targets only need WOFF2, not duplicate legacy font payloads. */
+@font-face{font-family:'DM Sans';font-style:normal;font-display:swap;font-weight:400;src:url('@fontsource/dm-sans/files/dm-sans-latin-400-normal.woff2') format('woff2')}
+@font-face{font-family:'DM Sans';font-style:normal;font-display:swap;font-weight:500;src:url('@fontsource/dm-sans/files/dm-sans-latin-500-normal.woff2') format('woff2')}
+@font-face{font-family:'DM Sans';font-style:normal;font-display:swap;font-weight:600;src:url('@fontsource/dm-sans/files/dm-sans-latin-600-normal.woff2') format('woff2')}
+@font-face{font-family:'DM Sans';font-style:normal;font-display:swap;font-weight:700;src:url('@fontsource/dm-sans/files/dm-sans-latin-700-normal.woff2') format('woff2')}
+@font-face{font-family:'Caveat';font-style:normal;font-display:swap;font-weight:400;src:url('@fontsource/caveat/files/caveat-latin-400-normal.woff2') format('woff2')}
+@font-face{font-family:'Caveat';font-style:normal;font-display:swap;font-weight:500;src:url('@fontsource/caveat/files/caveat-latin-500-normal.woff2') format('woff2')}
+@font-face{font-family:'Caveat';font-style:normal;font-display:swap;font-weight:600;src:url('@fontsource/caveat/files/caveat-latin-600-normal.woff2') format('woff2')}
+@font-face{font-family:'Noto Sans Devanagari';font-style:normal;font-display:swap;font-weight:400;src:url('@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-devanagari-400-normal.woff2') format('woff2')}
+@font-face{font-family:'Noto Sans Devanagari';font-style:normal;font-display:swap;font-weight:600;src:url('@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-devanagari-600-normal.woff2') format('woff2')}

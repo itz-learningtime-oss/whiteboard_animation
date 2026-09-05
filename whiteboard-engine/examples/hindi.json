@@ -1,0 +1,18 @@
+{
+  "title": "Rainwater harvesting in Hindi",
+  "settings": {"language": "hi"},
+  "scenes": [
+    {
+      "text": "\u092c\u093e\u0930\u093f\u0936 \u0915\u093e \u092a\u093e\u0928\u0940 \u092c\u091a\u093e\u090f\u0902\u0964 \u0939\u0930 \u092c\u0942\u0902\u0926 \u0905\u0928\u092e\u094b\u0932 \u0939\u0948\u0964",
+      "heading": "\u0939\u0930 \u092c\u0942\u0902\u0926 \u0905\u0928\u092e\u094b\u0932 \u0939\u0948",
+      "primary_visual": "rainwater",
+      "duration": 7
+    },
+    {
+      "text": "\u092a\u093e\u0928\u0940 \u092c\u091a\u093e\u0928\u0947 \u0938\u0947 \u0916\u0947\u0924 \u0939\u0930\u0947 \u092d\u0930\u0947 \u0930\u0939\u0924\u0947 \u0939\u0948\u0902\u0964",
+      "heading": "\u0939\u0930\u093f\u092f\u093e\u0932\u0940 \u0915\u0940 \u0913\u0930",
+      "primary_visual": "growth",
+      "duration": 7
+    }
+  ]
+}

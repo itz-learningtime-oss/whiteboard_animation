@@ -1,0 +1,10 @@
+{
+  "title": "Rainwater harvesting",
+  "settings": {"language": "en", "color": "#648650", "paper": "#fcfbf5", "hand": true, "hatching": true, "camera": true, "narration": true, "resolution": "1080", "rate": 1},
+  "scenes": [
+    {"text": "Rainwater is a gift. But most of it flows away, unused.", "heading": "Every drop counts.", "primary_visual": "rainwater", "duration": 8, "layout": "centered_illustration_with_heading"},
+    {"text": "Rainwater harvesting collects and stores this water for the days we need it most.", "heading": "Catch the rain.", "primary_visual": "collection", "duration": 9},
+    {"text": "From rooftops to storage tanks, a simple system makes every drop count.", "heading": "Save it for later.", "primary_visual": "storage", "duration": 8, "camera": "pan_down"},
+    {"text": "The result? Greener farms, healthier communities, and a more sustainable tomorrow.", "heading": "A greener tomorrow.", "primary_visual": "growth", "duration": 10, "camera": "zoom_out"}
+  ]
+}

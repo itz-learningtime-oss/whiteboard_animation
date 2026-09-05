@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.mp4
+*.manifest.json
+assets/cache/*
+!assets/cache/README.md
+assets/fonts/*.ttf
+assets/fonts/*-OFL.txt
+.coverage
+.pytest_cache/
