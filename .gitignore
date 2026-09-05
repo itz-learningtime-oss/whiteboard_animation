@@ -1,0 +1,41 @@
+# Node.js / Vite
+node_modules/
+dist/
+*.local
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.coverage
+
+# Python engine generated artifacts
+*.mp4
+*.manifest.json
+whiteboard-engine/assets/cache/*
+!whiteboard-engine/assets/cache/README.md
+whiteboard-engine/assets/fonts/*.ttf
+whiteboard-engine/assets/fonts/*-OFL.txt
+
+# Image builder generated artifacts
+image-whiteboard-builder/assets/cache/
+*.sketch.png
+*.edges.png
+.whiteboard-sketch-*/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS
+Desktop.ini

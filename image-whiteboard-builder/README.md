@@ -152,6 +152,51 @@ higher thresholds, or preprocessing to avoid excess texture. Small written text
 may not survive Canny simplification. No promise is made to recover invisible
 details or turn every photograph into illustrator-quality art.
 
+## Multiple Images and Subtitles
+
+`main.py` now accepts more than one image sharing a single audio track, plus
+an optional bottom-of-frame subtitle track. This is a CLI-only addition; the
+core modules gained `subtitles.py` and `export_multi_image_video` in
+`video_exporter.py`, everything else (`contour_processor.py`,
+`sketch_animator.py`, `audio_manager.py`) is unchanged.
+
+```bash
+# Draw every image in a folder, in natural filename order (1.jpg, 2.jpg, ...
+# 10.jpg), across the full length of one narration/audio track.
+python main.py --image-dir ../../asset --audio ../../asset/final.mp3 \
+  --output final_video.mp4 --subtitles captions.srt
+
+# Explicit image list and per-image seconds instead of an even split.
+python main.py --images a.png b.png c.png --audio voice.mp3 \
+  --durations "5,8,4" --output final_video.mp4
+```
+
+Without `--durations`, the audio is split evenly across the images (using a
+largest-remainder rounding so the frame counts sum exactly to the audio
+length). Within its own slice, each image behaves like the single-image
+pipeline: blank canvas, incremental contour drawing, then the completed
+sketch for the remainder of its slice; `--lead`/`--hold` apply per image.
+
+`--subtitles` takes either:
+- an `.srt` file (standard `HH:MM:SS,mmm --> HH:MM:SS,mmm` timing + caption
+  blocks), or
+- a plain `.txt` file with one caption per line, which is spread evenly
+  across the full audio duration.
+
+Captions are rendered directly onto the exported frames (not a separate
+subtitle stream) as a centered, semi-transparent bar near the bottom edge, so
+they show up identically in any player. Tune them with `--subtitle-font`
+(path to a `.ttf`/`.otf`; a common system font such as Segoe UI or Arial is
+used if omitted), `--subtitle-size`, `--subtitle-color`, `--subtitle-bg`,
+`--subtitle-bg-opacity`, and `--subtitle-margin`. `--save-sketch` with
+multiple images writes one `OUTPUT.imageN.sketch.png`/`.edges.png` pair per
+image instead of a single pair.
+
+**Not yet run on a machine with FFmpeg/OpenCV installed** — same verification
+boundary as the rest of this README: install the requirements and run the
+commands above (or `python setup_builder.py --test`) before treating this as
+production-verified.
+
 ## Hand Calibration
 
 The shipped 1024x1024 PNG has a nib at approximately (286, 285), normalized to

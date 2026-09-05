@@ -244,26 +244,135 @@ export class SketchPainter {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Multiple images sharing one audio track, and bottom-of-frame subtitles.
+// ---------------------------------------------------------------------------
+
+export type SubtitleCue = { start: number; end: number; text: string };
+
+/** Even split of a total duration across N images, unless explicit per-image seconds are given. */
+export function splitDurations(totalDuration: number, count: number, explicit?: number[]): number[] {
+  if (count <= 0 || totalDuration <= 0) return [];
+  if (explicit && explicit.length === count && explicit.every(n => Number.isFinite(n) && n > 0)) {
+    const sum = explicit.reduce((a, b) => a + b, 0);
+    return explicit.map(n => n / sum * totalDuration);
+  }
+  return Array.from({ length: count }, () => totalDuration / count);
+}
+
+/** Parses an .srt file's contents, or treats plain text as one caption per line spread evenly. */
+export function parseSubtitles(raw: string, totalDuration: number): SubtitleCue[] {
+  const text = raw.replace(/\r\n/g, '\n').trim();
+  if (!text) return [];
+  if (/\d{2}:\d{2}:\d{2}[,.]\d{1,3}\s*-->\s*\d{2}:\d{2}:\d{2}[,.]\d{1,3}/.test(text)) {
+    const toSeconds = (stamp: string) => {
+      const m = stamp.match(/(\d{2}):(\d{2}):(\d{2})[,.](\d{1,3})/)!;
+      return +m[1] * 3600 + +m[2] * 60 + +m[3] + Number((m[4] + '000').slice(0, 3)) / 1000;
+    };
+    const cues: SubtitleCue[] = [];
+    for (const block of text.split(/\n\s*\n/)) {
+      const lines = block.split('\n').filter(l => l.trim() !== '');
+      if (!lines.length) continue;
+      if (/^\d+$/.test(lines[0].trim())) lines.shift();
+      const match = lines[0]?.match(/(\d{2}:\d{2}:\d{2}[,.]\d{1,3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{1,3})/);
+      if (!match) continue;
+      const start = toSeconds(match[1]), end = toSeconds(match[2]);
+      const caption = lines.slice(1).join(' ').trim();
+      if (caption && end > start) cues.push({ start, end, text: caption });
+    }
+    return cues.sort((a, b) => a.start - b.start);
+  }
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length || totalDuration <= 0) return [];
+  const step = totalDuration / lines.length;
+  return lines.map((line, i) => ({ start: i * step, end: (i + 1) * step, text: line }));
+}
+
+export function activeSubtitle(cues: SubtitleCue[], time: number): string | undefined {
+  return cues.find(cue => time >= cue.start && time < cue.end)?.text;
+}
+
+/** Draws a centered, semi-transparent caption bar near the bottom of the canvas, in physical pixels. */
+export function drawSubtitle(ctx: CanvasRenderingContext2D, width: number, height: number, text: string) {
+  const size = Math.max(10, Math.round(42 * width / 1920));
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.font = `600 ${size}px 'DM Sans', system-ui, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  const maxWidth = width * .86;
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = []; let current = '';
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (!current || ctx.measureText(candidate).width <= maxWidth) current = candidate;
+    else { lines.push(current); current = word; }
+  }
+  if (current) lines.push(current);
+  if (!lines.length) return;
+  const lineHeight = size * 1.32;
+  const blockHeight = lines.length * lineHeight;
+  const bottom = height * .94, top = bottom - blockHeight;
+  const padX = size * .6, padY = size * .4;
+  const widest = Math.max(...lines.map(line => ctx.measureText(line).width));
+  const boxX = width / 2 - widest / 2 - padX, boxY = top - padY, boxW = widest + padX * 2, boxH = blockHeight + padY * 2, radius = size * .3;
+  ctx.beginPath();
+  ctx.moveTo(boxX + radius, boxY);
+  ctx.arcTo(boxX + boxW, boxY, boxX + boxW, boxY + boxH, radius);
+  ctx.arcTo(boxX + boxW, boxY + boxH, boxX, boxY + boxH, radius);
+  ctx.arcTo(boxX, boxY + boxH, boxX, boxY, radius);
+  ctx.arcTo(boxX, boxY, boxX + boxW, boxY, radius);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  let y = top + size;
+  for (const line of lines) { ctx.fillText(line, width / 2, y); y += lineHeight; }
+}
+
+/** Sequences several SketchPainter instances across one shared timeline, one active image at a time. */
+export class MultiSketchPlayer {
+  private painters: SketchPainter[];
+  private bounds: { start: number; end: number }[];
+  constructor(canvas: HTMLCanvasElement, drawings: SketchDrawing[], settings: SketchSettings, marker: HTMLCanvasElement | undefined, durations: number[]) {
+    this.painters = drawings.map(drawing => new SketchPainter(canvas, drawing, settings, marker));
+    let t = 0;
+    this.bounds = durations.map(duration => { const bound = { start: t, end: t + duration }; t += duration; return bound; });
+  }
+  paint(time: number) {
+    if (!this.painters.length) return;
+    let index = this.bounds.findIndex(bound => time < bound.end);
+    if (index === -1) index = this.bounds.length - 1;
+    const { start, end } = this.bounds[index];
+    const fraction = end > start ? Math.max(0, Math.min(1, (time - start) / (end - start))) : 1;
+    this.painters[index].paint(fraction);
+  }
+}
+
 export function sketchVideoFormat(){
   if(typeof MediaRecorder==='undefined'||typeof MediaRecorder.isTypeSupported!=='function')return null;
   const mime=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(type=>MediaRecorder.isTypeSupported(type));
   return mime?{mime,extension:mime.includes('mp4')?'mp4':'webm'}:null;
 }
 
-export async function recordSketch(drawing:SketchDrawing,audio:AudioInput,settings:SketchSettings,marker:HTMLCanvasElement|undefined,onProgress:(n:number)=>void,signal:AbortSignal):Promise<Blob>{
+/**
+ * Records one or more images, drawn in sequence across a shared timeline, together with
+ * the supplied audio and optional bottom-of-frame subtitle cues, into a downloadable video blob.
+ */
+export async function recordSketch(drawings:SketchDrawing[],durations:number[],audio:AudioInput,settings:SketchSettings,marker:HTMLCanvasElement|undefined,cues:SubtitleCue[],onProgress:(n:number)=>void,signal:AbortSignal):Promise<Blob>{
   const format=sketchVideoFormat();if(!format)throw new Error('Video recording is unavailable in this browser. Use the Python render kit.');
   if(audio.duration>300)throw new Error('For audio longer than five minutes, use the streaming Python renderer.');
   if(settings.hand&&!marker)throw new Error('The drawing hand is still loading. Try again or switch it off.');
+  if(!drawings.length)throw new Error('Add at least one image before exporting.');
   const context=new AudioContext();const canvas=document.createElement('canvas');canvas.width=settings.resolution==='1080'?1920:1280;canvas.height=settings.resolution==='1080'?1080:720;
+  const ctx=canvas.getContext('2d')!;
   let stream:MediaStream|undefined,recorder:MediaRecorder|undefined,raf=0,finishTimer=0;const chunks:Blob[]=[];let source:AudioBufferSourceNode|undefined;
   try{
     await context.resume();
     if(signal.aborted)throw new DOMException('Export cancelled','AbortError');
-    const painter=new SketchPainter(canvas,drawing,settings,marker);painter.paint(0);
+    const player=new MultiSketchPlayer(canvas,drawings,settings,marker,durations);
+    player.paint(0);
     const destination=context.createMediaStreamDestination();source=context.createBufferSource();source.buffer=audio.buffer;source.connect(destination);
     stream=canvas.captureStream(settings.fps);for(const track of destination.stream.getAudioTracks())stream.addTrack(track);
     recorder=new MediaRecorder(stream,{mimeType:format.mime,videoBitsPerSecond:settings.resolution==='1080'?6500000:4000000,audioBitsPerSecond:192000});
-    const recording=recorder,player=source;
+    const recording=recorder,player_=source;
     await new Promise<void>((resolve,reject)=>{
       let settled=false;
       const cleanup=()=>{signal.removeEventListener('abort',cancel);document.removeEventListener('visibilitychange',visibility);};
@@ -279,11 +388,16 @@ export async function recordSketch(drawing:SketchDrawing,audio:AudioInput,settin
         const start=context.currentTime;
         const frame=()=>{
           if(settled)return;
-          try{const fraction=Math.min(1,(context.currentTime-start)/audio.duration);painter.paint(fraction);onProgress(fraction);raf=requestAnimationFrame(frame);}
+          try{
+            const time=Math.min(audio.duration,context.currentTime-start);
+            player.paint(time);
+            if(cues.length){const text=activeSubtitle(cues,time);if(text)drawSubtitle(ctx,canvas.width,canvas.height,text);}
+            onProgress(time/audio.duration);raf=requestAnimationFrame(frame);
+          }
           catch{fail(new Error('The browser could not draw the next frame. Try 720p or the Python renderer.'));}
         };
-        player.onended=()=>{if(settled)return;cancelAnimationFrame(raf);painter.paint(1);onProgress(1);finishTimer=window.setTimeout(()=>{if(recording.state!=='inactive')recording.stop();},1000/settings.fps);};
-        try{player.start(start);frame();}catch{fail(new Error('The audio stream could not start. Try exporting again.'));}
+        player_.onended=()=>{if(settled)return;cancelAnimationFrame(raf);player.paint(audio.duration);if(cues.length){const text=activeSubtitle(cues,audio.duration-1e-3);if(text)drawSubtitle(ctx,canvas.width,canvas.height,text);}onProgress(1);finishTimer=window.setTimeout(()=>{if(recording.state!=='inactive')recording.stop();},1000/settings.fps);};
+        try{player_.start(start);frame();}catch{fail(new Error('The audio stream could not start. Try exporting again.'));}
       };
       try{recording.start(500);}catch{fail(new Error('Could not start the browser video encoder. Try a different resolution or the Python render kit.'));}
     });
