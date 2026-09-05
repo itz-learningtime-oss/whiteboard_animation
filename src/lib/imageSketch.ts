@@ -2,12 +2,12 @@ import { downloadBlob } from './export';
 import handUrl from '../../image-whiteboard-builder/assets/hand_marker.png';
 
 export type Point = { x: number; y: number };
-export type SketchPath = { points: Point[]; length: number; x: number; y: number; color: string; isClosed: boolean; fillColor: string };
+export type SketchPath = { points: Point[]; length: number; x: number; y: number };
 export type ImageInput = { file: File; url: string; pixels: ImageData; originalWidth: number; originalHeight: number };
 export type AudioInput = { file: File; url: string; buffer: AudioBuffer; duration: number; peaks: number[] };
 export type SketchDrawing = { paths: SketchPath[]; totalLength: number; edgeCount: number };
-export type SketchSettings = { detail: 'clean' | 'balanced' | 'detailed'; order: 'spatial' | 'length'; paper: string; ink: string; hand: boolean; penWidth: number; fps: 24 | 30 | 60; resolution: '1080' | '720'; colorMode: 'colorful' | 'monochrome'; style: 'sketch' | 'illustration' };
-export const defaultSketchSettings: SketchSettings = { detail: 'balanced', order: 'spatial', paper: '#fcfbf5', ink: '#30362d', hand: true, penWidth: 2.4, fps: 30, resolution: '1080', colorMode: 'colorful', style: 'sketch' };
+export type SketchSettings = { detail: 'clean' | 'balanced' | 'detailed'; order: 'spatial' | 'length'; paper: string; ink: string; hand: boolean; penWidth: number; fps: 24 | 30 | 60; resolution: '1080' | '720'; colorMode: 'colorful' | 'monochrome' };
+export const defaultSketchSettings: SketchSettings = { detail: 'balanced', order: 'spatial', paper: '#fcfbf5', ink: '#30362d', hand: true, penWidth: 2.4, fps: 30, resolution: '1080', colorMode: 'colorful' };
 export const thresholds = { clean: [75, 190], balanced: [50, 140], detailed: [22, 70] } as const;
 const W = 900, H = 506.25;
 
@@ -106,8 +106,7 @@ export async function extractContours(input: ImageData, settings: SketchSettings
     }
     if (y % 80 === 0) await breathe(signal);
   }
-   const effectiveDetail = settings.style === 'illustration' && settings.colorMode === 'colorful' ? 'clean' : settings.detail;
-   const [low, high] = thresholds[effectiveDetail];
+  const [low, high] = thresholds[settings.detail];
   const edges = new Uint8Array(size), queue = new Int32Array(size);
   let tail = 0;
   for (let y = 2; y < h - 2; y++) {
@@ -152,8 +151,7 @@ export async function extractContours(input: ImageData, settings: SketchSettings
       }
       previous = current; current = next;
     }
-    const traceThreshold = settings.style === 'illustration' && settings.colorMode === 'colorful' ? 30 : (settings.detail === 'detailed' ? 6 : 10);
-    if (trace.length < traceThreshold) continue;
+    if (trace.length < (settings.detail === 'detailed' ? 6 : 10)) continue;
     const raw: Point[] = [];
     for (let i=0;i<trace.length;i++) {
       if (i>0 && i<trace.length-1 && trace[i]-trace[i-1] === trace[i+1]-trace[i]) continue;
@@ -165,40 +163,9 @@ export async function extractContours(input: ImageData, settings: SketchSettings
     const first = raw[0], last = raw[raw.length - 1];
     const closingLength = Math.hypot(first.x - last.x, first.y - last.y);
     if (raw.length > 3 && closingLength <= scale * 1.5) { raw.push(first); length += closingLength; }
-    const isClosed = raw.length > 4 && closingLength <= scale * 1.5;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const point of raw) { minX = Math.min(minX, point.x); minY = Math.min(minY, point.y); maxX = Math.max(maxX, point.x); maxY = Math.max(maxY, point.y); }
-    const bbW = maxX - minX, bbH = maxY - minY;
-    if (settings.style === 'illustration' && settings.colorMode === 'colorful' && isClosed && (bbW < 18 || bbH < 18)) continue;
-    let pathColor = settings.ink;
-    if (settings.colorMode === 'colorful' && trace.length > 0) {
-      let r = 0, g = 0, b = 0;
-      for (let i = 0; i < trace.length; i++) {
-        const idx = trace[i];
-        r += data[idx * 4]; g += data[idx * 4 + 1]; b += data[idx * 4 + 2];
-      }
-      pathColor = `rgb(${Math.round(r/trace.length)},${Math.round(g/trace.length)},${Math.round(b/trace.length)})`;
-    }
-    let fillColor = settings.ink;
-    if (settings.style === 'illustration' && settings.colorMode === 'colorful' && isClosed && raw.length > 4) {
-      const bx = (minX + maxX) / 2;
-      const by = (minY + maxY) / 2;
-      const sampleSize = Math.max(3, Math.floor(scale * 15));
-      let fr = 0, fg = 0, fb = 0, fcount = 0;
-      for (let dy = -sampleSize; dy <= sampleSize; dy++) {
-        for (let dx = -sampleSize; dx <= sampleSize; dx++) {
-          const sx = Math.floor((bx + dx - ox) / scale);
-          const sy = Math.floor((by + dy - oy) / scale);
-          if (sx >= 0 && sx < w && sy >= 0 && sy < h) {
-            const sidx = sy * w + sx;
-            fr += data[sidx * 4]; fg += data[sidx * 4 + 1]; fb += data[sidx * 4 + 2];
-            fcount++;
-          }
-        }
-      }
-      if (fcount > 0) fillColor = `rgb(${Math.round(fr / fcount)},${Math.round(fg / fcount)},${Math.round(fb / fcount)})`;
-    }
-    paths.push({ points:raw,length,x:minX,y:minY,color:pathColor,isClosed,fillColor });
+    let minX = Infinity, minY = Infinity;
+    for (const point of raw) { minX = Math.min(minX, point.x); minY = Math.min(minY, point.y); }
+    paths.push({ points:raw,length,x:minX,y:minY });
     pointCount+=raw.length;
     if(paths.length>12000 || pointCount>250000) throw new Error('There are too many fine edges. Try the Clean detail setting or use a simpler image.');
   }
@@ -229,9 +196,7 @@ export function loadMarker(): Promise<HTMLCanvasElement> {
   return markerPromise;
 }
 
-type DrawSegment = { type: 'draw'; a: Point; b: Point; budget: number; color: string };
-type FillSegment = { type: 'fill'; points: Point[]; color: string; budget: number };
-type Segment = DrawSegment | FillSegment;
+type Segment = { a: Point; b: Point; budget: number; draws: boolean };
 export class SketchPainter {
   private segments: Segment[]=[];
   private budget=0;
@@ -247,13 +212,17 @@ export class SketchPainter {
     this.scratch=document.createElement('canvas');this.scratch.width=canvas.width;this.scratch.height=canvas.height;
     this.scratchContext=this.scratch.getContext('2d')!;
     let previous:Point|undefined;
-    if(this.settings.style==='illustration'&&this.settings.colorMode==='colorful'){const minOutlineLength=100;for(const path of drawing.paths){if(path.isClosed&&path.fillColor){const fillBudget=path.length*.8;if(fillBudget>1e-8) this.segments.push({type:'fill',points:path.points,color:path.fillColor,budget:fillBudget});}}for(const path of drawing.paths){if(path.length<minOutlineLength){if(path.points.length)previous=path.points[path.points.length-1];continue;}const outlineColor=this.settings.ink;if(previous){const budget=Math.hypot(path.points[0].x-previous.x,path.points[0].y-previous.y)*.08;if(budget>1e-8)this.segments.push({type:'draw',a:previous,b:path.points[0],budget,color:outlineColor});}for(let i=1;i<path.points.length;i++){const a=path.points[i-1],b=path.points[i],budget=Math.hypot(b.x-a.x,b.y-a.y);if(budget>1e-8)this.segments.push({type:'draw',a,b,budget,color:outlineColor});}previous=path.points[path.points.length-1];}}else{for(const path of drawing.paths){const pathColor=path.color||this.settings.ink;if(previous){const budget=Math.hypot(path.points[0].x-previous.x,path.points[0].y-previous.y)*.08;if(budget>1e-8)this.segments.push({type:'draw',a:previous,b:path.points[0],budget,color:pathColor});}for(let i=1;i<path.points.length;i++){const a=path.points[i-1],b=path.points[i],budget=Math.hypot(b.x-a.x,b.y-a.y);if(budget>1e-8)this.segments.push({type:'draw',a,b,budget,color:pathColor});}previous=path.points[path.points.length-1];}}
+    for(const path of drawing.paths){
+      if(previous){const budget=Math.hypot(path.points[0].x-previous.x,path.points[0].y-previous.y)*.08;if(budget>1e-8)this.segments.push({a:previous,b:path.points[0],budget,draws:false});}
+      for(let i=1;i<path.points.length;i++){const a=path.points[i-1],b=path.points[i],budget=Math.hypot(b.x-a.x,b.y-a.y);if(budget>1e-8)this.segments.push({a,b,budget,draws:true});}
+      previous=path.points[path.points.length-1];
+    }
     this.budget=this.segments.reduce((sum,s)=>sum+s.budget,0);this.reset();
   }
   private reset(){
     this.index=0;this.partial=0;this.consumed=0;this.tip=null;
     const c=this.scratchContext;c.setTransform(this.canvas.width/W,0,0,this.canvas.height/H,0,0);c.fillStyle=this.settings.paper;c.fillRect(0,0,W,H);
-    c.lineCap='round';c.lineJoin='round';
+    c.strokeStyle=this.settings.ink;c.lineWidth=this.settings.penWidth*W/1920;c.lineCap='round';c.lineJoin='round';
   }
   paint(fraction:number){
     fraction=Math.max(0,Math.min(1,fraction));const target=fraction*this.budget;
@@ -261,8 +230,9 @@ export class SketchPainter {
     const c=this.scratchContext;
     while(this.index<this.segments.length && this.consumed<target-1e-8){
       const s=this.segments[this.index],take=Math.min(target-this.consumed,s.budget-this.partial),start=this.partial/s.budget,end=(this.partial+take)/s.budget;
-      if(s.type==='fill'){if(start<=0){c.fillStyle=s.color;c.beginPath();c.moveTo(s.points[0].x,s.points[0].y);for(let i=1;i<s.points.length;i++)c.lineTo(s.points[i].x,s.points[i].y);c.closePath();c.fill();}this.tip={x:s.points.reduce((sum,p)=>sum+p.x,0)/s.points.length,y:s.points.reduce((sum,p)=>sum+p.y,0)/s.points.length};}else{const a={x:s.a.x+(s.b.x-s.a.x)*start,y:s.a.y+(s.b.y-s.a.y)*start},b={x:s.a.x+(s.b.x-s.a.x)*end,y:s.a.y+(s.b.y-s.a.y)*end};c.strokeStyle=s.color;c.lineWidth=(this.settings.style==='illustration'&&this.settings.colorMode==='colorful'?this.settings.penWidth*.6:this.settings.penWidth)*W/1920;c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();this.tip=b;}
-      this.partial+=take;this.consumed+=take;
+      const a={x:s.a.x+(s.b.x-s.a.x)*start,y:s.a.y+(s.b.y-s.a.y)*start},b={x:s.a.x+(s.b.x-s.a.x)*end,y:s.a.y+(s.b.y-s.a.y)*end};
+      if(s.draws){c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();}
+      this.tip=b;this.partial+=take;this.consumed+=take;
       if(this.partial>=s.budget-1e-8){this.index++;this.partial=0;}
     }
     this.ctx.setTransform(1,0,0,1,0,0);this.ctx.drawImage(this.scratch,0,0);
