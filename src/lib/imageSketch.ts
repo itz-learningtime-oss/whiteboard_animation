@@ -106,7 +106,8 @@ export async function extractContours(input: ImageData, settings: SketchSettings
     }
     if (y % 80 === 0) await breathe(signal);
   }
-  const [low, high] = thresholds[settings.detail];
+   const effectiveDetail = settings.style === 'illustration' && settings.colorMode === 'colorful' ? 'clean' : settings.detail;
+   const [low, high] = thresholds[effectiveDetail];
   const edges = new Uint8Array(size), queue = new Int32Array(size);
   let tail = 0;
   for (let y = 2; y < h - 2; y++) {
@@ -151,7 +152,8 @@ export async function extractContours(input: ImageData, settings: SketchSettings
       }
       previous = current; current = next;
     }
-    if (trace.length < (settings.detail === 'detailed' ? 6 : 10)) continue;
+    const traceThreshold = settings.style === 'illustration' && settings.colorMode === 'colorful' ? 30 : (settings.detail === 'detailed' ? 6 : 10);
+    if (trace.length < traceThreshold) continue;
     const raw: Point[] = [];
     for (let i=0;i<trace.length;i++) {
       if (i>0 && i<trace.length-1 && trace[i]-trace[i-1] === trace[i+1]-trace[i]) continue;
@@ -164,8 +166,10 @@ export async function extractContours(input: ImageData, settings: SketchSettings
     const closingLength = Math.hypot(first.x - last.x, first.y - last.y);
     if (raw.length > 3 && closingLength <= scale * 1.5) { raw.push(first); length += closingLength; }
     const isClosed = raw.length > 4 && closingLength <= scale * 1.5;
-    let minX = Infinity, minY = Infinity;
-    for (const point of raw) { minX = Math.min(minX, point.x); minY = Math.min(minY, point.y); }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const point of raw) { minX = Math.min(minX, point.x); minY = Math.min(minY, point.y); maxX = Math.max(maxX, point.x); maxY = Math.max(maxY, point.y); }
+    const bbW = maxX - minX, bbH = maxY - minY;
+    if (settings.style === 'illustration' && settings.colorMode === 'colorful' && isClosed && (bbW < 18 || bbH < 18)) continue;
     let pathColor = settings.ink;
     if (settings.colorMode === 'colorful' && trace.length > 0) {
       let r = 0, g = 0, b = 0;
@@ -177,14 +181,14 @@ export async function extractContours(input: ImageData, settings: SketchSettings
     }
     let fillColor = settings.ink;
     if (settings.style === 'illustration' && settings.colorMode === 'colorful' && isClosed && raw.length > 4) {
-      const cx = raw.reduce((s, p) => s + p.x, 0) / raw.length;
-      const cy = raw.reduce((s, p) => s + p.y, 0) / raw.length;
-      const sampleSize = Math.max(1, Math.floor(scale * 6));
+      const bx = (minX + maxX) / 2;
+      const by = (minY + maxY) / 2;
+      const sampleSize = Math.max(3, Math.floor(scale * 15));
       let fr = 0, fg = 0, fb = 0, fcount = 0;
       for (let dy = -sampleSize; dy <= sampleSize; dy++) {
         for (let dx = -sampleSize; dx <= sampleSize; dx++) {
-          const sx = Math.floor((cx + dx - ox) / scale);
-          const sy = Math.floor((cy + dy - oy) / scale);
+          const sx = Math.floor((bx + dx - ox) / scale);
+          const sy = Math.floor((by + dy - oy) / scale);
           if (sx >= 0 && sx < w && sy >= 0 && sy < h) {
             const sidx = sy * w + sx;
             fr += data[sidx * 4]; fg += data[sidx * 4 + 1]; fb += data[sidx * 4 + 2];
@@ -242,8 +246,8 @@ export class SketchPainter {
     this.ctx=canvas.getContext('2d')!;
     this.scratch=document.createElement('canvas');this.scratch.width=canvas.width;this.scratch.height=canvas.height;
     this.scratchContext=this.scratch.getContext('2d')!;
-     let previous:Point|undefined;
-     if(this.settings.style==='illustration'&&this.settings.colorMode==='colorful'){for(const path of drawing.paths){if(path.isClosed&&path.fillColor){const fillBudget=path.length*.8;if(fillBudget>1e-8)this.segments.push({type:'fill',points:path.points,color:path.fillColor,budget:fillBudget});}}for(const path of drawing.paths){const outlineColor=this.settings.ink;if(previous){const budget=Math.hypot(path.points[0].x-previous.x,path.points[0].y-previous.y)*.08;if(budget>1e-8)this.segments.push({type:'draw',a:previous,b:path.points[0],budget,color:outlineColor});}for(let i=1;i<path.points.length;i++){const a=path.points[i-1],b=path.points[i],budget=Math.hypot(b.x-a.x,b.y-a.y);if(budget>1e-8)this.segments.push({type:'draw',a,b,budget,color:outlineColor});}previous=path.points[path.points.length-1];}}else{for(const path of drawing.paths){const pathColor=path.color||this.settings.ink;if(previous){const budget=Math.hypot(path.points[0].x-previous.x,path.points[0].y-previous.y)*.08;if(budget>1e-8)this.segments.push({type:'draw',a:previous,b:path.points[0],budget,color:pathColor});}for(let i=1;i<path.points.length;i++){const a=path.points[i-1],b=path.points[i],budget=Math.hypot(b.x-a.x,b.y-a.y);if(budget>1e-8)this.segments.push({type:'draw',a,b,budget,color:pathColor});}previous=path.points[path.points.length-1];}}
+    let previous:Point|undefined;
+    if(this.settings.style==='illustration'&&this.settings.colorMode==='colorful'){const minOutlineLength=100;for(const path of drawing.paths){if(path.isClosed&&path.fillColor){const fillBudget=path.length*.8;if(fillBudget>1e-8) this.segments.push({type:'fill',points:path.points,color:path.fillColor,budget:fillBudget});}}for(const path of drawing.paths){if(path.length<minOutlineLength){if(path.points.length)previous=path.points[path.points.length-1];continue;}const outlineColor=this.settings.ink;if(previous){const budget=Math.hypot(path.points[0].x-previous.x,path.points[0].y-previous.y)*.08;if(budget>1e-8)this.segments.push({type:'draw',a:previous,b:path.points[0],budget,color:outlineColor});}for(let i=1;i<path.points.length;i++){const a=path.points[i-1],b=path.points[i],budget=Math.hypot(b.x-a.x,b.y-a.y);if(budget>1e-8)this.segments.push({type:'draw',a,b,budget,color:outlineColor});}previous=path.points[path.points.length-1];}}else{for(const path of drawing.paths){const pathColor=path.color||this.settings.ink;if(previous){const budget=Math.hypot(path.points[0].x-previous.x,path.points[0].y-previous.y)*.08;if(budget>1e-8)this.segments.push({type:'draw',a:previous,b:path.points[0],budget,color:pathColor});}for(let i=1;i<path.points.length;i++){const a=path.points[i-1],b=path.points[i],budget=Math.hypot(b.x-a.x,b.y-a.y);if(budget>1e-8)this.segments.push({type:'draw',a,b,budget,color:pathColor});}previous=path.points[path.points.length-1];}}
     this.budget=this.segments.reduce((sum,s)=>sum+s.budget,0);this.reset();
   }
   private reset(){
@@ -257,7 +261,7 @@ export class SketchPainter {
     const c=this.scratchContext;
     while(this.index<this.segments.length && this.consumed<target-1e-8){
       const s=this.segments[this.index],take=Math.min(target-this.consumed,s.budget-this.partial),start=this.partial/s.budget,end=(this.partial+take)/s.budget;
-      if(s.type==='fill'){if(start<=0){c.fillStyle=s.color;c.beginPath();c.moveTo(s.points[0].x,s.points[0].y);for(let i=1;i<s.points.length;i++)c.lineTo(s.points[i].x,s.points[i].y);c.closePath();c.fill();}this.tip={x:s.points.reduce((sum,p)=>sum+p.x,0)/s.points.length,y:s.points.reduce((sum,p)=>sum+p.y,0)/s.points.length};}else{const a={x:s.a.x+(s.b.x-s.a.x)*start,y:s.a.y+(s.b.y-s.a.y)*start},b={x:s.a.x+(s.b.x-s.a.x)*end,y:s.a.y+(s.b.y-s.a.y)*end};c.strokeStyle=s.color;c.lineWidth=this.settings.penWidth*W/1920;c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();this.tip=b;}
+      if(s.type==='fill'){if(start<=0){c.fillStyle=s.color;c.beginPath();c.moveTo(s.points[0].x,s.points[0].y);for(let i=1;i<s.points.length;i++)c.lineTo(s.points[i].x,s.points[i].y);c.closePath();c.fill();}this.tip={x:s.points.reduce((sum,p)=>sum+p.x,0)/s.points.length,y:s.points.reduce((sum,p)=>sum+p.y,0)/s.points.length};}else{const a={x:s.a.x+(s.b.x-s.a.x)*start,y:s.a.y+(s.b.y-s.a.y)*start},b={x:s.a.x+(s.b.x-s.a.x)*end,y:s.a.y+(s.b.y-s.a.y)*end};c.strokeStyle=s.color;c.lineWidth=(this.settings.style==='illustration'&&this.settings.colorMode==='colorful'?this.settings.penWidth*.6:this.settings.penWidth)*W/1920;c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();this.tip=b;}
       this.partial+=take;this.consumed+=take;
       if(this.partial>=s.budget-1e-8){this.index++;this.partial=0;}
     }
