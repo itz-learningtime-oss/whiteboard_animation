@@ -275,7 +275,9 @@ export class SketchPainter {
       }
       c.clip();
       c.globalAlpha=this.settings.colorPreservation/100;
-      c.drawImage(this.imageCanvas,0,0,W,H);
+      const iw=this.imageCanvas.width,ih=this.imageCanvas.height;
+      const imgScale=Math.min(W*.85/iw,H*.85/ih),imgOx=(W-iw*imgScale)/2,imgOy=(H-ih*imgScale)/2;
+      c.drawImage(this.imageCanvas,imgOx,imgOy,iw*imgScale,ih*imgScale);
       c.globalAlpha=1;
       c.restore();
     }
