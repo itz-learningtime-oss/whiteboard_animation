@@ -2,7 +2,7 @@ import { downloadBlob } from './export';
 import handUrl from '../../image-whiteboard-builder/assets/hand_marker.png';
 
 export type Point = { x: number; y: number };
-export type SketchPath = { points: Point[]; length: number; x: number; y: number };
+export type SketchPath = { points: Point[]; length: number; x: number; y: number; color: string };
 export type ImageInput = { file: File; url: string; pixels: ImageData; originalWidth: number; originalHeight: number };
 export type AudioInput = { file: File; url: string; buffer: AudioBuffer; duration: number; peaks: number[] };
 export type SketchDrawing = { paths: SketchPath[]; totalLength: number; edgeCount: number };
@@ -165,7 +165,16 @@ export async function extractContours(input: ImageData, settings: SketchSettings
     if (raw.length > 3 && closingLength <= scale * 1.5) { raw.push(first); length += closingLength; }
     let minX = Infinity, minY = Infinity;
     for (const point of raw) { minX = Math.min(minX, point.x); minY = Math.min(minY, point.y); }
-    paths.push({ points:raw,length,x:minX,y:minY });
+    let pathColor = settings.ink;
+    if (settings.colorMode === 'colorful' && trace.length > 0) {
+      let r = 0, g = 0, b = 0;
+      for (let i = 0; i < trace.length; i++) {
+        const idx = trace[i];
+        r += data[idx * 4]; g += data[idx * 4 + 1]; b += data[idx * 4 + 2];
+      }
+      pathColor = `rgb(${Math.round(r/trace.length)},${Math.round(g/trace.length)},${Math.round(b/trace.length)})`;
+    }
+    paths.push({ points:raw,length,x:minX,y:minY,color:pathColor });
     pointCount+=raw.length;
     if(paths.length>12000 || pointCount>250000) throw new Error('There are too many fine edges. Try the Clean detail setting or use a simpler image.');
   }
@@ -196,7 +205,7 @@ export function loadMarker(): Promise<HTMLCanvasElement> {
   return markerPromise;
 }
 
-type Segment = { a: Point; b: Point; budget: number; draws: boolean };
+type Segment = { a: Point; b: Point; budget: number; draws: boolean; color: string };
 export class SketchPainter {
   private segments: Segment[]=[];
   private budget=0;
@@ -211,18 +220,19 @@ export class SketchPainter {
     this.ctx=canvas.getContext('2d')!;
     this.scratch=document.createElement('canvas');this.scratch.width=canvas.width;this.scratch.height=canvas.height;
     this.scratchContext=this.scratch.getContext('2d')!;
-    let previous:Point|undefined;
-    for(const path of drawing.paths){
-      if(previous){const budget=Math.hypot(path.points[0].x-previous.x,path.points[0].y-previous.y)*.08;if(budget>1e-8)this.segments.push({a:previous,b:path.points[0],budget,draws:false});}
-      for(let i=1;i<path.points.length;i++){const a=path.points[i-1],b=path.points[i],budget=Math.hypot(b.x-a.x,b.y-a.y);if(budget>1e-8)this.segments.push({a,b,budget,draws:true});}
-      previous=path.points[path.points.length-1];
-    }
+     let previous:Point|undefined;
+     for(const path of drawing.paths){
+       const pathColor = path.color || this.settings.ink;
+       if(previous){const budget=Math.hypot(path.points[0].x-previous.x,path.points[0].y-previous.y)*.08;if(budget>1e-8)this.segments.push({a:previous,b:path.points[0],budget,draws:false,color:pathColor});}
+       for(let i=1;i<path.points.length;i++){const a=path.points[i-1],b=path.points[i],budget=Math.hypot(b.x-a.x,b.y-a.y);if(budget>1e-8)this.segments.push({a,b,budget,draws:true,color:pathColor});}
+       previous=path.points[path.points.length-1];
+     }
     this.budget=this.segments.reduce((sum,s)=>sum+s.budget,0);this.reset();
   }
   private reset(){
     this.index=0;this.partial=0;this.consumed=0;this.tip=null;
     const c=this.scratchContext;c.setTransform(this.canvas.width/W,0,0,this.canvas.height/H,0,0);c.fillStyle=this.settings.paper;c.fillRect(0,0,W,H);
-    c.strokeStyle=this.settings.ink;c.lineWidth=this.settings.penWidth*W/1920;c.lineCap='round';c.lineJoin='round';
+    c.lineCap='round';c.lineJoin='round';
   }
   paint(fraction:number){
     fraction=Math.max(0,Math.min(1,fraction));const target=fraction*this.budget;
@@ -231,7 +241,7 @@ export class SketchPainter {
     while(this.index<this.segments.length && this.consumed<target-1e-8){
       const s=this.segments[this.index],take=Math.min(target-this.consumed,s.budget-this.partial),start=this.partial/s.budget,end=(this.partial+take)/s.budget;
       const a={x:s.a.x+(s.b.x-s.a.x)*start,y:s.a.y+(s.b.y-s.a.y)*start},b={x:s.a.x+(s.b.x-s.a.x)*end,y:s.a.y+(s.b.y-s.a.y)*end};
-      if(s.draws){c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();}
+      if(s.draws){c.strokeStyle=s.color;c.lineWidth=this.settings.penWidth*W/1920;c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();}
       this.tip=b;this.partial+=take;this.consumed+=take;
       if(this.partial>=s.budget-1e-8){this.index++;this.partial=0;}
     }
