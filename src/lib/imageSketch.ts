@@ -7,10 +7,13 @@ export type SketchFill = { points: Point[]; width: number; startTime: number; en
 export type ImageInput = { file: File; url: string; pixels: ImageData; originalWidth: number; originalHeight: number };
 export type AudioInput = { file: File; url: string; buffer: AudioBuffer; duration: number; peaks: number[] };
 export type SketchDrawing = { paths: SketchPath[]; fillStrokes: SketchFill[]; totalLength: number; edgeCount: number; sourceImageData?: ImageData };
-export type SketchSettings = { detail: 'clean' | 'balanced' | 'detailed'; order: 'spatial' | 'length'; paper: string; ink: string; hand: boolean; penWidth: number; fps: 24 | 30 | 60; resolution: '1080' | '720'; colorMode: 'colorful' | 'monochrome'; colorPreservation: number };
-export const defaultSketchSettings: SketchSettings = { detail: 'balanced', order: 'spatial', paper: '#fcfbf5', ink: '#30362d', hand: true, penWidth: 2.4, fps: 30, resolution: '1080', colorMode: 'colorful', colorPreservation: 0 };
+export type SketchSettings = { detail: 'clean' | 'balanced' | 'detailed'; order: 'spatial' | 'length'; paper: string; ink: string; hand: boolean; penWidth: number; fps: 24 | 30 | 60; resolution: '1080' | '720'; colorMode: 'colorful' | 'monochrome'; colorPreservation: number; aspectRatio: '16:9' | '9:16'; fitScale: number };
+export const defaultSketchSettings: SketchSettings = { detail: 'balanced', order: 'spatial', paper: '#fcfbf5', ink: '#30362d', hand: true, penWidth: 2.4, fps: 30, resolution: '1080', colorMode: 'colorful', colorPreservation: 0, aspectRatio: '16:9', fitScale: 85 };
 export const thresholds = { clean: [75, 190], balanced: [50, 140], detailed: [22, 70] } as const;
 const W = 900, H = 506.25;
+export function getCanvasWH(aspectRatio: '16:9' | '9:16'): { W: number; H: number } {
+  return aspectRatio === '16:9' ? { W, H } : { W: H, H: W };
+}
 
 export async function readImage(file: File): Promise<ImageInput> {
   if (!/\.(png|jpe?g|webp|bmp)$/i.test(file.name)) throw new Error('Choose a PNG, JPEG, WebP, or BMP image.');
@@ -128,8 +131,10 @@ export async function extractContours(input: ImageData, settings: SketchSettings
     for (const offset of offsets) if (edges[i+offset] === 1) { edges[i+offset] = 2; queue[tail++] = i+offset; }
     if (head % 15000 === 0) await breathe(signal);
   }
-  const visited = new Uint8Array(size), paths: SketchPath[] = [];
-  const scale = Math.min(W*.85/w, H*.85/h), ox = (W-w*scale)/2, oy = (H-h*scale)/2;
+   const visited = new Uint8Array(size), paths: SketchPath[] = [];
+   const { W: cW, H: cH } = getCanvasWH(settings.aspectRatio);
+   const fitPct = settings.fitScale / 100;
+   const scale = Math.min(cW * fitPct / w, cH * fitPct / h), ox = (cW - w * scale) / 2, oy = (cH - h * scale) / 2;
   let pointCount = 0;
   for (let root = 0; root < size; root++) {
     if (root % 15000 === 0) { onProgress(.55 + .4*root/size); await breathe(signal); }
@@ -172,17 +177,17 @@ export async function extractContours(input: ImageData, settings: SketchSettings
   }
   if(!paths.length) throw new Error('No clear lines found. Try Detailed edges or a higher-contrast picture.');
    paths.sort((a,b)=>settings.order==='length' ? b.length-a.length || a.y-b.y : Math.floor(a.y/22)-Math.floor(b.y/22) || a.x-b.x || a.y-b.y);
-   const fillStrokes: SketchFill[] = [];
-   if (settings.colorPreservation > 0) {
-      const brushWidth = Math.max(30, Math.round(W / 22));
+    const fillStrokes: SketchFill[] = [];
+    if (settings.colorPreservation > 0) {
+      const brushWidth = Math.max(30, Math.round(cW / 22));
       const step = brushWidth * 0.75;
       let rowIndex = 0;
-     const totalBandCount = Math.ceil(H / step) + 1;
-     for (let y = step / 2; y < H + step; y += step) {
-       const points: Point[] = [];
-       const segments = 24;
-       for (let i = 0; i <= segments; i++) {
-         const x = (i / segments) * W;
+      const totalBandCount = Math.ceil(cH / step) + 1;
+      for (let y = step / 2; y < cH + step; y += step) {
+        const points: Point[] = [];
+        const segments = 24;
+        for (let i = 0; i <= segments; i++) {
+          const x = (i / segments) * cW;
          const wobble = Math.sin(i * 1.2 + rowIndex) * (brushWidth * 0.15);
          points.push({ x, y: y + wobble });
        }
@@ -229,12 +234,15 @@ export class SketchPainter {
   private scratchContext: CanvasRenderingContext2D;
   private drawingRef: SketchDrawing;
   private imageCanvas?: HTMLCanvasElement;
+  private cw: number;
+  private ch: number;
   tip: Point | null=null;
   constructor(private canvas: HTMLCanvasElement, drawing: SketchDrawing, private settings: SketchSettings, private marker?: HTMLCanvasElement) {
     this.ctx=canvas.getContext('2d')!;
     this.scratch=document.createElement('canvas');this.scratch.width=canvas.width;this.scratch.height=canvas.height;
     this.scratchContext=this.scratch.getContext('2d')!;
     this.drawingRef=drawing;
+    const { W: cW, H: cH } = getCanvasWH(settings.aspectRatio); this.cw=cW; this.ch=cH;
     if (drawing.sourceImageData) {
       this.imageCanvas=document.createElement('canvas');this.imageCanvas.width=drawing.sourceImageData.width;this.imageCanvas.height=drawing.sourceImageData.height;
       this.imageCanvas.getContext('2d')!.putImageData(drawing.sourceImageData,0,0);
@@ -249,8 +257,8 @@ export class SketchPainter {
   }
   private reset(){
     this.index=0;this.partial=0;this.consumed=0;this.tip=null;
-    const c=this.scratchContext;c.setTransform(this.canvas.width/W,0,0,this.canvas.height/H,0,0);c.fillStyle=this.settings.paper;c.fillRect(0,0,W,H);
-    c.strokeStyle=this.settings.ink;c.lineWidth=this.settings.penWidth*W/1920;c.lineCap='round';c.lineJoin='round';
+    const c=this.scratchContext;c.setTransform(this.canvas.width/this.cw,0,0,this.canvas.height/this.ch,0,0);c.fillStyle=this.settings.paper;c.fillRect(0,0,this.cw,this.ch);
+    c.strokeStyle=this.settings.ink;c.lineWidth=this.settings.penWidth*this.cw/1920;c.lineCap='round';c.lineJoin='round';
   }
   paint(fraction:number){
     fraction=Math.max(0,Math.min(1,fraction));
@@ -276,7 +284,7 @@ export class SketchPainter {
       c.clip();
       c.globalAlpha=this.settings.colorPreservation/100;
       const iw=this.imageCanvas.width,ih=this.imageCanvas.height;
-      const imgScale=Math.min(W*.85/iw,H*.85/ih),imgOx=(W-iw*imgScale)/2,imgOy=(H-ih*imgScale)/2;
+      const imgScale=Math.min(this.cw*this.settings.fitScale/100/iw,this.ch*this.settings.fitScale/100/ih),imgOx=(this.cw-iw*imgScale)/2,imgOy=(this.ch-ih*imgScale)/2;
       c.drawImage(this.imageCanvas,imgOx,imgOy,iw*imgScale,ih*imgScale);
       c.globalAlpha=1;
       c.restore();
@@ -290,8 +298,8 @@ export class SketchPainter {
     }
     this.ctx.setTransform(1,0,0,1,0,0);this.ctx.drawImage(this.scratch,0,0);
     if(this.settings.hand && this.marker && this.tip && fraction>0 && fraction<1){
-      this.ctx.setTransform(this.canvas.width/W,0,0,this.canvas.height/H,0,0);
-      const width=W*.28,height=width*this.marker.height/this.marker.width;
+      this.ctx.setTransform(this.canvas.width/this.cw,0,0,this.canvas.height/this.ch,0,0);
+      const width=this.cw*.28,height=width*this.marker.height/this.marker.width;
       this.ctx.drawImage(this.marker,this.tip.x-width*.279,this.tip.y-height*.278,width,height);
     }
   }
@@ -347,7 +355,8 @@ export function activeSubtitle(cues: SubtitleCue[], time: number): string | unde
 
 /** Draws a centered, semi-transparent caption bar near the bottom of the canvas, in physical pixels. */
 export function drawSubtitle(ctx: CanvasRenderingContext2D, width: number, height: number, text: string) {
-  const size = Math.max(10, Math.round(42 * width / 1920));
+  const longer = Math.max(width, height);
+  const size = Math.max(10, Math.round(42 * longer / 1920));
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.font = `600 ${size}px 'DM Sans', system-ui, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
@@ -414,7 +423,7 @@ export async function recordSketch(drawings:SketchDrawing[],durations:number[],a
   if(audio.duration>300)throw new Error('For audio longer than five minutes, use the streaming Python renderer.');
   if(settings.hand&&!marker)throw new Error('The drawing hand is still loading. Try again or switch it off.');
   if(!drawings.length)throw new Error('Add at least one image before exporting.');
-  const context=new AudioContext();const canvas=document.createElement('canvas');canvas.width=settings.resolution==='1080'?1920:1280;canvas.height=settings.resolution==='1080'?1080:720;
+   const context=new AudioContext();const canvas=document.createElement('canvas');const isHd=settings.resolution==='1080';const ar=settings.aspectRatio==='9:16';canvas.width=isHd?(ar?1080:1920):(ar?720:1280);canvas.height=isHd?(ar?1920:1080):(ar?1280:720);
   const ctx=canvas.getContext('2d')!;
   let stream:MediaStream|undefined,recorder:MediaRecorder|undefined,raf=0,finishTimer=0;const chunks:Blob[]=[];let source:AudioBufferSourceNode|undefined;
   try{
@@ -465,7 +474,7 @@ export async function recordSketch(drawings:SketchDrawing[],durations:number[],a
 }
 
 export function downloadSketchPng(drawing:SketchDrawing,settings:SketchSettings){
-  const canvas=document.createElement('canvas');canvas.width=1920;canvas.height=1080;
+  const canvas=document.createElement('canvas');const ar=settings.aspectRatio==='9:16';canvas.width=ar?1080:1920;canvas.height=ar?1920:1080;
   new SketchPainter(canvas,drawing,{...settings,hand:false}).paint(1);
   canvas.toBlob(blob=>{if(blob)downloadBlob(blob,'whiteboard-sketch.png');},'image/png');
 }
