@@ -7,7 +7,7 @@ export type SketchFill = { points: Point[]; width: number; startTime: number; en
 export type ImageInput = { file: File; url: string; pixels: ImageData; originalWidth: number; originalHeight: number };
 export type AudioInput = { file: File; url: string; buffer: AudioBuffer; duration: number; peaks: number[] };
 export type SketchDrawing = { paths: SketchPath[]; fillStrokes: SketchFill[]; totalLength: number; edgeCount: number; sourceImageData?: ImageData };
-export type SketchSettings = { detail: 'clean' | 'balanced' | 'detailed'; order: 'spatial' | 'length'; paper: string; ink: string; hand: boolean; penWidth: number; fps: 24 | 30 | 60; resolution: '1080' | '720'; colorMode: 'colorful' | 'monochrome'; colorPreservation: number; aspectRatio: '16:9' | '9:16'; fitScale: number; fillMethod: 'sweep' | 'wipe-top' };
+export type SketchSettings = { detail: 'clean' | 'balanced' | 'detailed'; order: 'spatial' | 'length'; paper: string; ink: string; hand: boolean; penWidth: number; fps: 24 | 30 | 60; resolution: '1080' | '720'; colorMode: 'colorful' | 'monochrome'; colorPreservation: number; aspectRatio: '16:9' | '9:16'; fitScale: number; fillMethod: 'sweep' | 'wipe-top' | 'instant' };
 export const defaultSketchSettings: SketchSettings = { detail: 'balanced', order: 'spatial', paper: '#fcfbf5', ink: '#30362d', hand: true, penWidth: 2.4, fps: 30, resolution: '1080', colorMode: 'colorful', colorPreservation: 0, aspectRatio: '16:9', fitScale: 85, fillMethod: 'sweep' };
 export const thresholds = { clean: [75, 190], balanced: [50, 140], detailed: [22, 70] } as const;
 const W = 900, H = 506.25;
@@ -268,17 +268,18 @@ export class SketchPainter {
     if(target<this.consumed-1e-8)this.reset();
     const c=this.scratchContext;
     if(this.settings.colorPreservation>0&&this.imageCanvas&&fraction>fillStart){
-      const fillProgress=(fraction-fillStart)/(1-fillStart);
-      c.save();
-      c.beginPath();
-       if(this.settings.fillMethod==='wipe-top'){const clipH=this.ch*fillProgress;c.rect(0,0,this.cw,clipH);}else{for(const fstroke of this.drawingRef.fillStrokes){if(fstroke.startTime>fillProgress)continue;const p=Math.max(0,Math.min(1,(fillProgress-fstroke.startTime)/(fstroke.endTime-fstroke.startTime)));const count=Math.max(2,Math.floor(fstroke.points.length*p));const pts=fstroke.points.slice(0,count);if(pts.length>1){c.moveTo(pts[0].x+fstroke.width/2,pts[0].y);for(let i=0;i<pts.length;i++)c.arc(pts[i].x,pts[i].y,fstroke.width/1.8,0,Math.PI*2);}}}
-      c.clip();
-      c.globalAlpha=this.settings.colorPreservation/100;
-      const iw=this.imageCanvas.width,ih=this.imageCanvas.height;
-      const imgScale=Math.min(this.cw*this.settings.fitScale/100/iw,this.ch*this.settings.fitScale/100/ih),imgOx=(this.cw-iw*imgScale)/2,imgOy=(this.ch-ih*imgScale)/2;
-      c.drawImage(this.imageCanvas,imgOx,imgOy,iw*imgScale,ih*imgScale);
-      c.globalAlpha=1;
-      c.restore();
+       const iw=this.imageCanvas.width,ih=this.imageCanvas.height;
+       const imgScale=Math.min(this.cw*this.settings.fitScale/100/iw,this.ch*this.settings.fitScale/100/ih),imgOx=(this.cw-iw*imgScale)/2,imgOy=(this.ch-ih*imgScale)/2;
+        c.globalAlpha=this.settings.colorPreservation/100;
+        if(this.settings.fillMethod==='instant'){c.drawImage(this.imageCanvas,imgOx,imgOy,iw*imgScale,ih*imgScale);c.globalAlpha=1;}else{
+        const fillProgress=(fraction-fillStart)/(1-fillStart);
+        c.save();
+        c.beginPath();
+        if(this.settings.fillMethod==='wipe-top'){const clipH=this.ch*fillProgress;c.rect(0,0,this.cw,clipH);}else{for(const fstroke of this.drawingRef.fillStrokes){if(fstroke.startTime>fillProgress)continue;const p=Math.max(0,Math.min(1,(fillProgress-fstroke.startTime)/(fstroke.endTime-fstroke.startTime)));const count=Math.max(2,Math.floor(fstroke.points.length*p));const pts=fstroke.points.slice(0,count);if(pts.length>1){c.moveTo(pts[0].x+fstroke.width/2,pts[0].y);for(let i=0;i<pts.length;i++)c.arc(pts[i].x,pts[i].y,fstroke.width/1.8,0,Math.PI*2);}}}
+        c.clip();
+        c.drawImage(this.imageCanvas,imgOx,imgOy,iw*imgScale,ih*imgScale);
+        c.restore();c.globalAlpha=1;
+        }
     }
     while(this.index<this.segments.length&&this.consumed<target-1e-8){
       const s=this.segments[this.index],take=Math.min(target-this.consumed,s.budget-this.partial),start=this.partial/s.budget,end=(this.partial+take)/s.budget;
