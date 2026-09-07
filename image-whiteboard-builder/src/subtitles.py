@@ -29,7 +29,7 @@ class SubtitleCue:
 @dataclass(frozen=True)
 class SubtitleOptions:
     font_path: Path | None = None
-    font_size: int = 42
+    font_size: int = 22
     color: str = "#ffffff"
     background: str = "#000000"
     background_opacity: float = .55

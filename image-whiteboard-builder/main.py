@@ -53,6 +53,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hand-scale", type=float, default=.28)
     parser.add_argument("--tip-x", type=float, default=.279, help="Normalized marker-tip x within the hand image")
     parser.add_argument("--tip-y", type=float, default=.278, help="Normalized marker-tip y within the hand image")
+    parser.add_argument("--paper-texture", type=Path, default=None, help="Optional paper-texture PNG overlaid at 15% opacity onto the whiteboard canvas")
+    parser.add_argument("--ken-burns-rate", type=float, default=.0008, help="Subtle zoom per frame (total ~1.10x–1.12x over the full timeline); set to 0 to disable")
     parser.add_argument("--lead", type=float, default=0, help="Initial blank-canvas pause (within the audio, or within each image's own slice for multi-image)")
     parser.add_argument("--hold", type=float, default=0, help="Completed-sketch pause (within the audio, or within each image's own slice for multi-image)")
     parser.add_argument("--preset", choices=["ultrafast", "veryfast", "fast", "medium", "slow"], default="medium")
@@ -111,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         durations = _parse_durations(args.durations, len(images))
 
         contours = ContourOptions(width=args.width, height=args.height, low_threshold=args.canny_low, high_threshold=args.canny_high, blur_size=args.blur, min_length=args.min_length, sort=args.sort, margin=args.margin, processing_limit=args.processing_limit, color_mode=args.color_mode)
-        animation = AnimationOptions(paper=args.paper, ink=args.ink, pen_width=args.pen_width, hand=not args.no_hand, hand_path=args.hand, hand_scale=args.hand_scale, tip_x=args.tip_x, tip_y=args.tip_y)
+        animation = AnimationOptions(paper=args.paper, ink=args.ink, pen_width=args.pen_width, hand=not args.no_hand, hand_path=args.hand, hand_scale=args.hand_scale, tip_x=args.tip_x, tip_y=args.tip_y, paper_texture=args.paper_texture, ken_burns_rate=args.ken_burns_rate)
         subtitle_options = SubtitleOptions(font_path=args.subtitle_font, font_size=args.subtitle_size, color=args.subtitle_color, background=args.subtitle_bg, background_opacity=args.subtitle_bg_opacity, margin=args.subtitle_margin)
 
         def progress(fraction: float, message: str):

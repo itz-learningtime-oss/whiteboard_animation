@@ -77,11 +77,13 @@ def _ffmpeg_binary() -> str:
     return ffmpeg
 
 
-def _encode_command(ffmpeg: str, width: int, height: int, fps: int, pcm_path: Path, frame_count: int, padded_samples: int, video_duration: float, crf: int, preset: str, pending: Path) -> list[str]:
+def _encode_command(ffmpeg: str, width: int, height: int, fps: int, pcm_path: Path, frame_count: int, padded_samples: int, video_duration: float, crf: int, preset: str, pending: Path, ken_burns_rate: float = 0.0) -> list[str]:
+    filters = f"zoompan=z='min(zoom+{ken_burns_rate},1.12)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frame_count}:s={width}x{height},setsar=1" if ken_burns_rate > 0 else "setsar=1"
     return [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pixel_format", "rgb24",
             "-video_size", f"{width}x{height}", "-framerate", str(fps), "-i", "pipe:0",
             "-protocol_whitelist", "file,pipe", "-i", str(pcm_path), "-map", "0:v:0", "-map", "1:a:0",
             "-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p",
+            "-vf", filters,
             "-frames:v", str(frame_count), "-c:a", "aac", "-b:a", "192k",
             "-af", f"apad=whole_len={padded_samples}", "-t", f"{video_duration:.12f}",
             "-movflags", "+faststart", str(pending)]
@@ -200,7 +202,7 @@ def export_video(image_path: Path, audio_path: Path, output: Path, contour_optio
         pending = work / "encoded.mp4"
         log = work / "encoder.log"
         padded_samples = audio.sample_frames + timing.audio_padding_samples
-        command = _encode_command(ffmpeg, drawing.width, drawing.height, fps, audio.pcm_path, timing.frame_count, padded_samples, timing.video_duration, crf, preset, pending)
+        command = _encode_command(ffmpeg, drawing.width, drawing.height, fps, audio.pcm_path, timing.frame_count, padded_samples, timing.video_duration, crf, preset, pending, animation_options.ken_burns_rate)
         _stream_frames(command, frames(), timing.frame_count, fps, log, report, .1, .84, "Drawing frame")
 
         report(.96, "Verifying codecs, frame count, and audio/video duration")
@@ -290,7 +292,7 @@ def export_multi_image_video(image_paths: list[Path], audio_path: Path, output: 
         pending = work / "encoded.mp4"
         log = work / "encoder.log"
         padded_samples = audio.sample_frames + timing.audio_padding_samples
-        command = _encode_command(ffmpeg, contour_options.width, contour_options.height, fps, audio.pcm_path, timing.frame_count, padded_samples, timing.video_duration, crf, preset, pending)
+        command = _encode_command(ffmpeg, contour_options.width, contour_options.height, fps, audio.pcm_path, timing.frame_count, padded_samples, timing.video_duration, crf, preset, pending, animation_options.ken_burns_rate)
         _stream_frames(command, all_frames(), timing.frame_count, fps, log, report, .16, .78, "Drawing frame")
 
         report(.96, "Verifying codecs, frame count, and audio/video duration")

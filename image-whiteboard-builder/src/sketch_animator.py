@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
@@ -37,6 +37,8 @@ class AnimationOptions:
     hand_scale: float = .28
     tip_x: float = .279
     tip_y: float = .278
+    paper_texture: Path | None = None
+    ken_burns_rate: float = 0.0008
 
     def validate(self):
         if not all(isinstance(color, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", color) for color in (self.paper, self.ink)):
@@ -45,6 +47,10 @@ class AnimationOptions:
             raise ValueError("Pen width must be between 0.5 and 12 reference pixels.")
         if not .05 <= self.hand_scale <= .6 or not 0 <= self.tip_x <= 1 or not 0 <= self.tip_y <= 1:
             raise ValueError("Hand scale and normalized pen-tip coordinates are invalid.")
+        if not math.isfinite(self.ken_burns_rate) or self.ken_burns_rate < 0:
+            raise ValueError("Ken Burns zoom rate must be zero or a non-negative finite number.")
+        if self.paper_texture is not None and not Path(self.paper_texture).is_file():
+            raise ValueError(f"Paper texture not found: {self.paper_texture}")
 
 
 def load_hand(path: Path) -> Image.Image:
@@ -94,11 +100,18 @@ class SketchAnimator:
             marker = load_hand(self.options.hand_path)
             width = max(24, round(drawing.width * self.options.hand_scale))
             self.marker = marker.resize((width, round(width * marker.height / marker.width)), Image.Resampling.LANCZOS)
+        self.texture = None
+        if self.options.paper_texture is not None:
+            tex = Image.open(self.options.paper_texture).convert("RGB")
+            self.texture = np.array(tex.resize((drawing.width, drawing.height)))
         self.reset()
 
     def reset(self) -> None:
         self.board = np.empty((self.drawing.height, self.drawing.width, 3), dtype=np.uint8)
         self.board[:] = ImageColor.getrgb(self.options.paper)
+        if self.texture is not None:
+            blend = self.board.astype(np.float32) * .85 + self.texture.astype(np.float32) * .15
+            self.board[:] = blend.astype(np.uint8)
         self.cursor = 0
         self.partial = 0.0
         self.consumed = 0.0
