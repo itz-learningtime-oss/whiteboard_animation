@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tip-y", type=float, default=.278, help="Normalized marker-tip y within the hand image")
     parser.add_argument("--paper-texture", type=Path, default=None, help="Optional paper-texture PNG overlaid at 15% opacity onto the whiteboard canvas")
     parser.add_argument("--generate-paper", action="store_true", help="Generate procedural paper texture (noise + hatch lines + border) inspired by the refined project")
-    parser.add_argument("--ken-burns-rate", type=float, default=.0008, help="Subtle zoom per frame (total ~1.10x–1.12x over the full timeline); set to 0 to disable")
+    parser.add_argument("--ken-burns-rate", type=float, default=0.0, help="Subtle zoom per frame (total ~1.10x–1.12x over the full timeline); set to 0 to disable")
     parser.add_argument("--lead", type=float, default=0, help="Initial blank-canvas pause (within the audio, or within each image's own slice for multi-image)")
     parser.add_argument("--hold", type=float, default=0, help="Completed-sketch pause (within the audio, or within each image's own slice for multi-image)")
     parser.add_argument("--preset", choices=["ultrafast", "veryfast", "fast", "medium", "slow"], default="medium")

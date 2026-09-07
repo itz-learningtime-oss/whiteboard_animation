@@ -38,7 +38,7 @@ class AnimationOptions:
     tip_x: float = .279
     tip_y: float = .278
     paper_texture: Path | None = None
-    ken_burns_rate: float = 0.0008
+    ken_burns_rate: float = 0.0
     generate_paper: bool = False
 
     def validate(self):
@@ -78,6 +78,7 @@ class SketchAnimator:
         self.drawing = drawing
         self.options = options or AnimationOptions()
         self.options.validate()
+        self.fallback_color = ImageColor.getrgb(self.options.ink)
         self.segments: list[PenSegment] = []
         previous = None
         for path in drawing.paths:
@@ -94,7 +95,6 @@ class SketchAnimator:
         self.total_budget = sum(segment.budget for segment in self.segments)
         if self.total_budget <= 0:
             raise ValueError("The drawing has no non-zero-length contours.")
-        self.fallback_color = ImageColor.getrgb(self.options.ink)
         self.pen_width = max(1, round(self.options.pen_width * drawing.width / 1920))
         self.marker = None
         if self.options.hand:

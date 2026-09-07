@@ -7,8 +7,8 @@ export type SketchFill = { points: Point[]; width: number; startTime: number; en
 export type ImageInput = { file: File; url: string; pixels: ImageData; originalWidth: number; originalHeight: number };
 export type AudioInput = { file: File; url: string; buffer: AudioBuffer; duration: number; peaks: number[] };
 export type SketchDrawing = { paths: SketchPath[]; fillStrokes: SketchFill[]; totalLength: number; edgeCount: number; sourceImageData?: ImageData };
-export type SketchSettings = { detail: 'clean' | 'balanced' | 'detailed'; order: 'spatial' | 'length'; paper: string; ink: string; hand: boolean; penWidth: number; fps: 24 | 30 | 60; resolution: '1080' | '720'; colorMode: 'colorful' | 'monochrome'; colorPreservation: number; aspectRatio: '16:9' | '9:16'; fitScale: number; fillMethod: 'sweep' | 'wipe-top' | 'instant' };
-export const defaultSketchSettings: SketchSettings = { detail: 'balanced', order: 'spatial', paper: '#fcfbf5', ink: '#30362d', hand: true, penWidth: 2.4, fps: 30, resolution: '1080', colorMode: 'colorful', colorPreservation: 0, aspectRatio: '16:9', fitScale: 85, fillMethod: 'sweep' };
+export type SketchSettings = { detail: 'clean' | 'balanced' | 'detailed'; order: 'spatial' | 'length'; paper: string; ink: string; hand: boolean; penWidth: number; fps: 24 | 30 | 60; resolution: '1080' | '720'; colorMode: 'colorful' | 'monochrome'; colorPreservation: number; aspectRatio: '16:9' | '9:16'; fitScale: number; fillMethod: 'sweep' | 'wipe-top' | 'instant'; generatePaper: boolean };
+export const defaultSketchSettings: SketchSettings = { detail: 'balanced', order: 'spatial', paper: '#fcfbf5', ink: '#30362d', hand: true, penWidth: 2.4, fps: 30, resolution: '720', colorMode: 'colorful', colorPreservation: 0, aspectRatio: '16:9', fitScale: 85, fillMethod: 'sweep', generatePaper: false };
 export const thresholds = { clean: [75, 190], balanced: [50, 140], detailed: [22, 70] } as const;
 const W = 900, H = 506.25;
 export function getCanvasWH(aspectRatio: '16:9' | '9:16'): { W: number; H: number } {
@@ -255,18 +255,36 @@ export class SketchPainter {
     }
     this.budget=this.segments.reduce((sum,s)=>sum+s.budget,0);this.reset();
   }
+  private _makePaper(c:CanvasRenderingContext2D){
+    const { W: cW, H: cH } = getCanvasWH(this.settings.aspectRatio);
+    c.fillStyle=this.settings.paper;c.fillRect(0,0,cW,cH);
+    c.save();
+    c.globalCompositeOperation='multiply';
+    c.fillStyle='rgba(0,0,0,0.06)';
+    c.globalAlpha=1;
+    const spacing=Math.max(20,Math.round(34*cH/506.25));
+    for(let y=spacing*.4;y<cH;y+=spacing){c.beginPath();c.moveTo(28,y);c.lineTo(cW-28,y);c.stroke();}
+    c.strokeStyle='rgba(0,0,0,0.12)';c.lineWidth=2;
+    c.strokeRect(14,12,cW-28,cH-24);
+    c.restore();
+    const imgData=c.getImageData(0,0,this.scratch.width,this.scratch.height);const data=imgData.data;
+    for(let i=0;i<data.length;i+=4){const noise=(Math.random()*13|0)-6;data[i]=Math.min(255,Math.max(0,data[i]+noise));data[i+1]=Math.min(255,Math.max(0,data[i+1]+noise));data[i+2]=Math.min(255,Math.max(0,data[i+2]+noise));}
+    c.putImageData(imgData,0,0);
+  }
   private reset(){
     this.index=0;this.partial=0;this.consumed=0;this.tip=null;
-    const c=this.scratchContext;c.setTransform(this.canvas.width/this.cw,0,0,this.canvas.height/this.ch,0,0);c.fillStyle=this.settings.paper;c.fillRect(0,0,this.cw,this.ch);
+    const c=this.scratchContext;c.setTransform(this.canvas.width/this.cw,0,0,this.canvas.height/this.ch,0,0);
+    if(this.settings.generatePaper)this._makePaper(c);else{c.fillStyle=this.settings.paper;c.fillRect(0,0,this.cw,this.ch);}
     c.strokeStyle=this.settings.ink;c.lineWidth=this.settings.penWidth*this.cw/1920;c.lineCap='round';c.lineJoin='round';
   }
-  paint(fraction:number){
+  paint(fraction:number,baseLayer?:ImageData){
     fraction=Math.max(0,Math.min(1,fraction));
     const fillStart=.3;
     const outlineProgress=fraction<fillStart?fraction/fillStart:1;
     const target=outlineProgress*this.budget;
     if(target<this.consumed-1e-8)this.reset();
     const c=this.scratchContext;
+    if(baseLayer&&this.consumed<1e-8&&this.index===0){c.putImageData(baseLayer,0,0);c.strokeStyle=this.settings.ink;c.lineWidth=this.settings.penWidth*this.cw/1920;c.lineCap='round';c.lineJoin='round';}
     if(this.settings.colorPreservation>0&&this.imageCanvas&&fraction>fillStart){
        const iw=this.imageCanvas.width,ih=this.imageCanvas.height;
        const imgScale=Math.min(this.cw*this.settings.fitScale/100/iw,this.ch*this.settings.fitScale/100/ih),imgOx=(this.cw-iw*imgScale)/2,imgOy=(this.ch-ih*imgScale)/2;
@@ -295,6 +313,7 @@ export class SketchPainter {
       this.ctx.drawImage(this.marker,this.tip.x-width*.279,this.tip.y-height*.278,width,height);
     }
   }
+  getFrame():ImageData{return this.scratchContext.getImageData(0,0,this.scratch.width,this.scratch.height);}
 }
 
 // ---------------------------------------------------------------------------
@@ -385,10 +404,14 @@ export function drawSubtitle(ctx: CanvasRenderingContext2D, width: number, heigh
 export class MultiSketchPlayer {
   private painters: SketchPainter[];
   private bounds: { start: number; end: number }[];
+  private completed: boolean[];
+  private accumulatedBackground: ImageData | undefined;
   constructor(canvas: HTMLCanvasElement, drawings: SketchDrawing[], settings: SketchSettings, marker: HTMLCanvasElement | undefined, durations: number[]) {
     this.painters = drawings.map(drawing => new SketchPainter(canvas, drawing, settings, marker));
     let t = 0;
     this.bounds = durations.map(duration => { const bound = { start: t, end: t + duration }; t += duration; return bound; });
+    this.completed = drawings.map(() => false);
+    this.accumulatedBackground = undefined;
   }
   paint(time: number) {
     if (!this.painters.length) return;
@@ -396,7 +419,11 @@ export class MultiSketchPlayer {
     if (index === -1) index = this.bounds.length - 1;
     const { start, end } = this.bounds[index];
     const fraction = end > start ? Math.max(0, Math.min(1, (time - start) / (end - start))) : 1;
-    this.painters[index].paint(fraction);
+    this.painters[index].paint(fraction, this.accumulatedBackground);
+    if (fraction >= 1 && !this.completed[index]) {
+      this.completed[index] = true;
+      this.accumulatedBackground = this.painters[index].getFrame();
+    }
   }
 }
 
