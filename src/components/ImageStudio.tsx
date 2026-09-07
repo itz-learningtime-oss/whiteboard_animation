@@ -21,7 +21,10 @@ function SketchCanvas({ drawing, settings, progress, marker }: { drawing: Sketch
   }, [drawing, settings, marker]);
   useEffect(() => { painter.current?.paint(progress); }, [progress, drawing, settings, marker]);
   const isPortrait = settings.aspectRatio === '9:16';
-  return <canvas className="sketch-canvas" ref={canvas} width={isPortrait ? 810 : 1440} height={isPortrait ? 1440 : 810} role="img" aria-label="Progressive contour sketch of your uploaded image"/>;
+  const isHd = settings.resolution === '1080';
+  const w = isPortrait ? (isHd ? 1080 : 720) : (isHd ? 1920 : 1280);
+  const h = isPortrait ? (isHd ? 1920 : 1280) : (isHd ? 1080 : 720);
+  return <canvas className="sketch-canvas" ref={canvas} width={w} height={h} role="img" aria-label="Progressive contour sketch of your uploaded image"/>;
 }
 
 /** Renders one drawing at a time across a shared timeline (multi-image preview). */
@@ -34,7 +37,10 @@ function MultiSketchCanvas({ drawings, durations, settings, time, marker }: { dr
   }, [drawings, settings, marker, durations]);
   useEffect(() => { player.current?.paint(time); }, [time, drawings, settings, marker, durations]);
   const isPortrait = settings.aspectRatio === '9:16';
-  return <canvas className="sketch-canvas" ref={canvas} width={isPortrait ? 810 : 1440} height={isPortrait ? 1440 : 810} role="img" aria-label="Progressive contour sketch of your uploaded images"/>;
+  const isHd = settings.resolution === '1080';
+  const w = isPortrait ? (isHd ? 1080 : 720) : (isHd ? 1920 : 1280);
+  const h = isPortrait ? (isHd ? 1920 : 1280) : (isHd ? 1080 : 720);
+  return <canvas className="sketch-canvas" ref={canvas} width={w} height={h} role="img" aria-label="Progressive contour sketch of your uploaded images"/>;
 }
 
 export default function ImageStudio({ active, helpRequest, notify, onScriptStudio }: Props) {

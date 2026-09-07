@@ -259,12 +259,7 @@ export class SketchPainter {
     const { W: cW, H: cH } = getCanvasWH(this.settings.aspectRatio);
     c.fillStyle=this.settings.paper;c.fillRect(0,0,cW,cH);
     c.save();
-    c.globalCompositeOperation='multiply';
-    c.fillStyle='rgba(0,0,0,0.06)';
-    c.globalAlpha=1;
-    const spacing=Math.max(20,Math.round(34*cH/506.25));
-    for(let y=spacing*.4;y<cH;y+=spacing){c.beginPath();c.moveTo(28,y);c.lineTo(cW-28,y);c.stroke();}
-    c.strokeStyle='rgba(0,0,0,0.12)';c.lineWidth=2;
+    c.strokeStyle='rgba(0,0,0,0.08)';c.lineWidth=2;
     c.strokeRect(14,12,cW-28,cH-24);
     c.restore();
     const imgData=c.getImageData(0,0,this.scratch.width,this.scratch.height);const data=imgData.data;
@@ -419,7 +414,7 @@ export class MultiSketchPlayer {
     if (index === -1) index = this.bounds.length - 1;
     const { start, end } = this.bounds[index];
     const fraction = end > start ? Math.max(0, Math.min(1, (time - start) / (end - start))) : 1;
-    this.painters[index].paint(fraction, this.accumulatedBackground);
+    this.painters[index].paint(fraction, index > 0 ? this.accumulatedBackground : undefined);
     if (fraction >= 1 && !this.completed[index]) {
       this.completed[index] = true;
       this.accumulatedBackground = this.painters[index].getFrame();
