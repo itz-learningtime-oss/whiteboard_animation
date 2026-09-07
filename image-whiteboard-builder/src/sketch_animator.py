@@ -39,6 +39,7 @@ class AnimationOptions:
     tip_y: float = .278
     paper_texture: Path | None = None
     ken_burns_rate: float = 0.0008
+    generate_paper: bool = False
 
     def validate(self):
         if not all(isinstance(color, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", color) for color in (self.paper, self.ink)):
@@ -106,9 +107,27 @@ class SketchAnimator:
             self.texture = np.array(tex.resize((drawing.width, drawing.height)))
         self.reset()
 
+    def _make_paper(self) -> np.ndarray:
+        paper_rgb = ImageColor.getrgb(self.options.paper)
+        board = np.empty((self.drawing.height, self.drawing.width, 3), dtype=np.uint8)
+        board[:] = paper_rgb
+        rng = np.random.default_rng(4)
+        noise = rng.integers(-6, 7, size=board.shape, dtype=np.int16)
+        board = np.clip(board.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+        spacing = max(20, round(34 * self.drawing.height / 720))
+        hatch = tuple(max(0, c - 15) for c in paper_rgb)
+        for y in range(round(spacing * .4), self.drawing.height, spacing):
+            cv2.line(board, (28, y), (self.drawing.width - 28, y), hatch, 1)
+        border = tuple(max(0, c - 30) for c in paper_rgb)
+        cv2.rectangle(board, (14, 12), (self.drawing.width - 14, self.drawing.height - 12), border, 2)
+        return board
+
     def reset(self) -> None:
-        self.board = np.empty((self.drawing.height, self.drawing.width, 3), dtype=np.uint8)
-        self.board[:] = ImageColor.getrgb(self.options.paper)
+        if self.options.generate_paper:
+            self.board = self._make_paper()
+        else:
+            self.board = np.empty((self.drawing.height, self.drawing.width, 3), dtype=np.uint8)
+            self.board[:] = ImageColor.getrgb(self.options.paper)
         if self.texture is not None:
             blend = self.board.astype(np.float32) * .85 + self.texture.astype(np.float32) * .15
             self.board[:] = blend.astype(np.uint8)
